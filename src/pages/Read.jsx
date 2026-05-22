@@ -46,7 +46,6 @@ function computeOutOfScope(text, poolSet) {
   if (!text || !text.trim()) return new Set()
   const sentences = text.split(/(?<=[.!?])\s+/)
   const whitelist = new Set()
-  // Build proper-noun whitelist
   sentences.forEach((s) => {
     const parts = s.split(/\s+/)
     parts.forEach((p, idx) => {
@@ -210,12 +209,11 @@ function ImmersiveReader({
   setLearningQueue,
   highlightSet,
 }) {
-  const [popup, setPopup] = useState(null) // { word, sentence, x, y, definitionEntry }
+  const [popup, setPopup] = useState(null)
   const popupRef = useRef(null)
 
   const tokenized = useMemo(() => tokenizeParagraphs(paragraphs), [paragraphs])
 
-  // Close popup on outside click
   useEffect(() => {
     if (!popup) return
     function handleClick(e) {
@@ -248,7 +246,6 @@ function ImmersiveReader({
       (it) => (it.word || '').toLowerCase() === word.toLowerCase()
     )
     if (exists) {
-      // Already in queue — mark as favorite
       const updated = learningQueue.map((it) =>
         (it.word || '').toLowerCase() === word.toLowerCase()
           ? { ...it, isFavorite: true }
@@ -339,7 +336,6 @@ function ImmersiveReader({
         </p>
       ))}
 
-      {/* ── Word popup ── */}
       {popup && (
         <div
           ref={popupRef}
@@ -349,7 +345,6 @@ function ImmersiveReader({
             top: Math.max(popup.y - 12, 16),
           }}
         >
-          {/* Close */}
           <button
             onClick={() => setPopup(null)}
             className="absolute top-2 right-2 text-gray-300 hover:text-gray-600 transition-colors"
@@ -357,7 +352,6 @@ function ImmersiveReader({
             <X size={16} />
           </button>
 
-          {/* Word + pronunciation */}
           <div className="flex items-center gap-2 mb-2 pr-5">
             <h4 className="text-base font-bold text-gray-900">{popup.word}</h4>
             <button
@@ -369,7 +363,6 @@ function ImmersiveReader({
             </button>
           </div>
 
-          {/* Definition */}
           {popup.definitionEntry ? (
             <div className="mb-3 space-y-0.5">
               {(popup.definitionEntry.translations || []).slice(0, 3).map((t, i) => (
@@ -383,12 +376,10 @@ function ImmersiveReader({
             <p className="text-sm text-gray-400 mb-3">未收录 · 词库中暂无该词</p>
           )}
 
-          {/* Source sentence */}
           <p className="text-xs text-gray-400 mb-3 leading-relaxed line-clamp-2 border-l-2 border-gray-200 pl-2">
             {popup.sentence}
           </p>
 
-          {/* Actions */}
           <div className="flex gap-2">
             <button
               onClick={saveWordToQueue}
@@ -431,23 +422,19 @@ const SCENARIO_LOADING_MESSAGES = [
 ]
 
 export default function Read() {
-  const [globalWordPool] = useStorage('globalWordPool', [])
+  /* ── ALL state declarations at top (no TDZ issues) ── */
+  const [globalWordPool, setGlobalWordPool] = useStorage('globalWordPool', [])
   const [learningQueue, setLearningQueue] = useStorage('learningQueue', [])
+  const [readCache, setReadCache] = useStorage('readCache', {})
 
-  /* ── tab ── */
   const [activeTab, setActiveTab] = useState('synthesis')
-
-  /* ── Manual Analyze ── */
   const [text, setText] = useState('')
-
-  /* ── Synthesis ── */
   const [synthesisArticle, setSynthesisArticle] = useState(null)
   const [synthesisLoading, setSynthesisLoading] = useState(false)
   const [synthWordCount, setSynthWordCount] = useState(150)
   const [showSynthConfig, setShowSynthConfig] = useState(false)
 
-  /* ── Scenario ── */
-  const [selectedTopic, setSelectedTopic] = useState(null)
+  const [selectedScenario, setSelectedScenario] = useState(null)
   const [llmArticle, setLlmArticle] = useState(null)
   const [scenarioTopic, setScenarioTopic] = useState('all')
   const [scenarioDifficulty, setScenarioDifficulty] = useState('all')
@@ -458,13 +445,14 @@ export default function Read() {
   const [lastGenParams, setLastGenParams] = useState(null)
   const [dynamicTopics, setDynamicTopics] = useState(null)
   const [topicsLoading, setTopicsLoading] = useState(false)
+  const [shuffleSeed, setShuffleSeed] = useState(0)
   const [showApiConfig, setShowApiConfig] = useState(false)
   const [apiConfigured, setApiConfigured] = useState(() => isLLMConfigured())
 
-  /* ── loading animation ── */
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const loadingTimerRef = useRef(null)
 
+  /* ── loading animation ── */
   useEffect(() => {
     if (synthesisLoading || scenarioLoading) {
       setLoadingMsgIdx(0)
@@ -483,7 +471,6 @@ export default function Read() {
   }, [synthesisLoading, scenarioLoading])
 
   /* ── cache ── */
-  const [readCache, setReadCache] = useStorage('readCache', {})
 
   // Restore synthesis from cache on mount
   useEffect(() => {
@@ -491,7 +478,7 @@ export default function Read() {
       setSynthesisArticle(readCache.synthesis)
     }
     if (readCache.scenario && !llmArticle) {
-      if (readCache.scenario.topic) setSelectedTopic(readCache.scenario.topic)
+      if (readCache.scenario.topic) setSelectedScenario(readCache.scenario.topic)
       if (readCache.scenario.article) setLlmArticle(readCache.scenario.article)
       if (readCache.scenario.length) setScenarioLength(readCache.scenario.length)
       if (readCache.scenario.customScenario) setCustomScenario(readCache.scenario.customScenario)
@@ -511,11 +498,11 @@ export default function Read() {
 
   // Cache scenario article
   useEffect(() => {
-    if (llmArticle && selectedTopic) {
+    if (llmArticle && selectedScenario) {
       setReadCache((prev) => ({
         ...prev,
         scenario: {
-          topic: selectedTopic,
+          topic: selectedScenario,
           article: llmArticle,
           length: scenarioLength,
           customScenario,
@@ -524,7 +511,7 @@ export default function Read() {
       }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [llmArticle, selectedTopic, scenarioLength])
+  }, [llmArticle, selectedScenario, scenarioLength])
 
   // Cache analyze text
   useEffect(() => {
@@ -577,7 +564,7 @@ export default function Read() {
 
   const displayedScenarios = useMemo(() => {
     return shuffle(filteredScenarios)
-  }, [filteredScenarios])
+  }, [filteredScenarios, shuffleSeed])
 
   const scenarioHighlightSet = useMemo(() => {
     if (!llmArticle || !llmArticle.paragraphs) return new Set()
@@ -611,7 +598,7 @@ export default function Read() {
     setScenarioError(null)
     setScenarioLoading(true)
     setLlmArticle(null)
-    setSelectedTopic({ id: 'custom', emoji: '✨', title: customScenario.trim(), topic: 'custom', difficulty: scenarioDifficulty })
+    setSelectedScenario({ id: 'custom', emoji: '✨', title: customScenario.trim(), topic: 'custom', difficulty: scenarioDifficulty })
     const params = { scenario: customScenario.trim(), difficulty: scenarioDifficulty, wordCount: scenarioLength }
     setLastGenParams(params)
     try {
@@ -628,7 +615,7 @@ export default function Read() {
     setScenarioError(null)
     setScenarioLoading(true)
     setLlmArticle(null)
-    setSelectedTopic(sc)
+    setSelectedScenario(sc)
     const scenarioDesc = customScenario.trim()
       ? `${sc.emoji} ${sc.title}（上下文：${customScenario.trim()}）`
       : `${sc.emoji} ${sc.title}`
@@ -666,7 +653,6 @@ export default function Read() {
       setLlmArticle({ ...article, scenarioDesc: lastGenParams.scenario, generatedAt: Date.now() })
     } catch (e) {
       setScenarioError(mapLLMError(e))
-      // Restore previous article on error so user can still read it
       if (readCache.scenario?.article) {
         setLlmArticle(readCache.scenario.article)
       }
@@ -677,7 +663,7 @@ export default function Read() {
 
   function handleBackToGrid() {
     setLlmArticle(null)
-    setSelectedTopic(null)
+    setSelectedScenario(null)
     setScenarioError(null)
   }
 
@@ -745,7 +731,7 @@ export default function Read() {
     <button
       onClick={() => {
         setActiveTab(tab)
-        setSelectedTopic(null)
+        setSelectedScenario(null)
         setLlmArticle(null)
         setScenarioError(null)
         setSynthesisArticle(null)
@@ -780,7 +766,6 @@ export default function Read() {
   function ArticleCard({ title, meta, paragraphs, highlightSet, onRegenerate }) {
     return (
       <div>
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-900">{title}</h3>
@@ -797,7 +782,6 @@ export default function Read() {
           )}
         </div>
 
-        {/* Article body */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-6">
           <ImmersiveReader
             paragraphs={paragraphs}
@@ -929,7 +913,6 @@ export default function Read() {
 
           {synthesisLoading && (
             <div className="flex flex-col items-center justify-center py-16">
-              {/* Animated spinner */}
               <div className="relative w-16 h-16 mb-6">
                 <div className="absolute inset-0 border-4 border-gray-100 rounded-full" />
                 <div className="absolute inset-0 border-4 border-transparent border-t-gray-900 rounded-full animate-spin" />
@@ -950,7 +933,6 @@ export default function Read() {
                 paragraphs={synthesisArticle.paragraphs}
                 onRegenerate={handleGenerateSynthesis}
               />
-              {/* Highlight words recap */}
               <div className="bg-amber-50/40 rounded-xl border border-amber-100 p-5">
                 <p className="text-xs font-medium text-amber-700 mb-3 tracking-wide">文中目标词汇</p>
                 <div className="flex flex-wrap gap-2">
@@ -976,150 +958,58 @@ export default function Read() {
           ═══════════════════════════════════════════════════════════ */}
       {activeTab === 'scenario' && (
         <div>
-          {!selectedScenario ? (
-            <div>
-              <p className="text-sm text-gray-400 mb-5">
-                按话题、难度和长度筛选，阅读一篇为你定制的英文文章。点击文中任意单词查看释义并收藏。
-              </p>
+          <p className="text-sm text-gray-400 mb-5">
+            按话题、难度和长度筛选，阅读一篇为你定制的英文文章。点击文中任意单词查看释义并收藏。
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <label className="text-xs text-gray-400">话题</label>
+            <select value={scenarioTopic} onChange={(e) => setScenarioTopic(e.target.value)}
+              className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+              <option value="all">全部话题</option>
+              <option value="daily">日常闲谈</option>
+              <option value="business">商务</option>
+              <option value="academic">学术</option>
+              <option value="travel">旅游</option>
+              <option value="technology">科技</option>
+              <option value="health">健康</option>
+            </select>
+            <label className="text-xs text-gray-400">难度</label>
+            <select value={scenarioDifficulty} onChange={(e) => setScenarioDifficulty(e.target.value)}
+              className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+              <option value="all">全部难度</option>
+              <option value="easy">初级</option>
+              <option value="medium">中级</option>
+              <option value="hard">高级</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+            {displayedScenarios.map((sc) => (
+              <button key={sc.id} onClick={() => handlePresetGenerate(sc)}
+                className="group text-left bg-white rounded-xl border border-gray-100 shadow-sm p-6 hover:border-gray-300 hover:shadow-md transition-all">
+                <span className="text-2xl">{sc.emoji}</span>
+                <h3 className="font-semibold text-gray-900 mb-1 mt-2">{sc.title}</h3>
+                <p className="text-xs text-gray-400">{sc.topic}</p>
+              </button>
+            ))}
+          </div>
 
-              {/* Custom Scenario Input */}
-              <div className="mb-4">
-                <input
-                  type="text"
-                  value={customScenario}
-                  onChange={(e) => setCustomScenario(e.target.value)}
-                  placeholder="输入你感兴趣的具体场景，例如：在火星上喝咖啡..."
-                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-shadow"
-                />
-                {customScenario.trim() && (
-                  <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
-                    <Sparkles size={12} />
-                    自定义场景已激活 — 选择任意文章后将以你的场景描述为上下文
-                  </p>
-                )}
-              </div>
-
-              {/* Filter bar */}
-              <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 flex-shrink-0">话题</span>
-                  <select value={scenarioTopic} onChange={(e) => setScenarioTopic(e.target.value)}
-                    className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200">
-                    {TOPIC_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 flex-shrink-0">难度</span>
-                  <select value={scenarioDifficulty} onChange={(e) => setScenarioDifficulty(e.target.value)}
-                    className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200">
-                    {DIFFICULTY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 flex-shrink-0">长度</span>
-                  <select value={scenarioLength} onChange={(e) => setScenarioLength(Number(e.target.value))}
-                    className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200">
-                    {LENGTH_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Refresh + count */}
-              <div className="flex items-center justify-between mb-5">
-                <span className="text-xs text-gray-400">
-                  {filteredScenarios.length} 个场景
-                </span>
-                <button
-                  onClick={() => setScenarioShuffleSeed((s) => s + 1)}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  <RefreshCw size={13} />
-                  换一批灵感
-                </button>
-              </div>
-
-              {/* Grid */}
-              {displayedScenarios.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
-                  {displayedScenarios.map((sc) => (
-                    <button key={sc.id} onClick={() => setSelectedScenario(sc)}
-                      className="group text-left bg-white rounded-xl border border-gray-100 shadow-sm p-6 hover:border-gray-300 hover:shadow-md transition-all">
-                      <div className="flex items-start justify-between mb-3">
-                        <span className="text-2xl">{sc.emoji}</span>
-                        {difficultyBadge(sc.difficulty)}
-                      </div>
-                      <h3 className="font-semibold text-gray-900 mb-1">{sc.title}</h3>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">
-                        {customScenario.trim()
-                          ? '由你的场景生成'
-                          : TOPIC_OPTIONS.find((t) => t.value === sc.topic)?.label || sc.topic}
-                      </p>
-                      <div className="flex items-center gap-1 mt-4 text-xs text-gray-300 group-hover:text-gray-900 transition-colors">
-                        <span>进入阅读</span>
-                        <ArrowRight size={14} />
-                      </div>
-                    </button>
+          {selectedScenario && (
+            <div className="max-w-2xl mx-auto mt-8">
+              {scenarioLoading ? (
+                <p className="text-gray-400">正在生成文章...</p>
+              ) : llmArticle ? (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                  <h3 className="text-lg font-bold mb-4">{llmArticle.title}</h3>
+                  {llmArticle.paragraphs.map((p, i) => (
+                    <p key={i} className="text-gray-700 mb-4 last:mb-0">{p}</p>
                   ))}
                 </div>
-              ) : (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 flex items-center justify-center text-center">
-                  <div>
-                    <p className="text-4xl mb-4">🔍</p>
-                    <p className="text-gray-400 text-sm">当前筛选条件下暂无场景，试试调整话题或难度</p>
-                  </div>
+              ) : scenarioError ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-sm text-red-700">{scenarioError}</p>
+                  <button onClick={handleBackToGrid} className="text-sm text-red-600 underline mt-2">返回</button>
                 </div>
-              )}
-            </div>
-          ) : (
-            /* Article reader */
-            <div className="max-w-2xl mx-auto">
-              <div className="flex items-center justify-between mb-6">
-                <button onClick={() => setSelectedScenario(null)}
-                  className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1">
-                  ← 返回列表
-                </button>
-                {!customScenario.trim() && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400">
-                      {TOPIC_OPTIONS.find((t) => t.value === selectedScenario.topic)?.label}
-                    </span>
-                    {difficultyBadge(selectedScenario.difficulty)}
-                  </div>
-                )}
-              </div>
-
-              {scenarioRegenerating ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="relative w-16 h-16 mb-6">
-                    <div className="absolute inset-0 border-4 border-gray-100 rounded-full" />
-                    <div className="absolute inset-0 border-4 border-transparent border-t-gray-900 rounded-full animate-spin" />
-                    <div className="absolute inset-2 border-4 border-transparent border-t-amber-300 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
-                  </div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">正在重新生成</p>
-                  <p className="text-xs text-gray-400">为你准备一篇新文章...</p>
-                </div>
-              ) : (
-                <div>
-                  <ArticleCard
-                    title={
-                      customScenario.trim()
-                        ? customScenario.trim()
-                        : `${selectedScenario.emoji} ${selectedScenario.title}`
-                    }
-                    meta={
-                      customScenario.trim()
-                        ? '自定义场景'
-                        : undefined
-                    }
-                    paragraphs={getScenarioParagraphs(selectedScenario.paragraphs, scenarioLength)}
-                    onRegenerate={handleScenarioRegenerate}
-                  />
-                  <p className="text-xs text-gray-300 mt-4">
-                    约 {countWords(getScenarioParagraphs(selectedScenario.paragraphs, scenarioLength).join(' '))} 词
-                    · {scenarioLength <= 150 ? '精简版' : scenarioLength <= 250 ? '标准版' : '完整版'}
-                  </p>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

@@ -4,6 +4,7 @@ import Vocab from './pages/Vocab'
 import Read from './pages/Read'
 import Speak from './pages/Speak'
 import Track from './pages/Track'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const MENU = [
   { key: 'Vocab', label: 'Vocab', icon: BookOpen },
@@ -61,7 +62,7 @@ function App() {
       </aside>
 
       <main className="flex-1 p-8">
-        <div className="max-w-6xl mx-auto">{renderPage()}</div>
+        <div className="max-w-6xl mx-auto"><ErrorBoundary>{renderPage()}</ErrorBoundary></div>
       </main>
     </div>
   )
