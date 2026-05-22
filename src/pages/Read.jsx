@@ -439,6 +439,26 @@ const SCENARIO_LOADING_MESSAGES = [
   '即将完成，请稍候...',
 ]
 
+const GRAMMAR_LOADING_MESSAGES = [
+  'AI 正在分析语法结构...',
+  '正在编织包含目标语法的语境...',
+  '正在润色句子...',
+  '即将呈现，请稍候...',
+]
+
+const GRAMMAR_OPTIONS = [
+  { id: 'subjunctive', label: '虚拟语气' },
+  { id: 'attr-clause', label: '定语从句' },
+  { id: 'non-predicate', label: '非谓语动词' },
+  { id: 'inversion', label: '倒装句' },
+  { id: 'emphatic', label: '强调句' },
+  { id: 'absolute', label: '独立主格' },
+  { id: 'compound-object', label: '复合宾语' },
+  { id: 'passive', label: '被动语态' },
+  { id: 'comparative', label: '比较结构' },
+  { id: 'nominal-clause', label: '名词性从句' },
+]
+
 export default function Read() {
   /* ── ALL state declarations at top (no TDZ issues) ── */
   const [globalWordPool, setGlobalWordPool] = useStorage('globalWordPool', [])
@@ -446,7 +466,6 @@ export default function Read() {
   const [readCache, setReadCache] = useStorage('readCache', {})
 
   const [activeTab, setActiveTab] = useState('synthesis')
-  const [text, setText] = useState('')
   const [synthesisArticle, setSynthesisArticle] = useState(null)
   const [synthesisLoading, setSynthesisLoading] = useState(false)
   const [synthWordCount, setSynthWordCount] = useState(150)
@@ -462,6 +481,13 @@ export default function Read() {
   const [lastGenParams, setLastGenParams] = useState(null)
   const [visibleScenarios, setVisibleScenarios] = useState(() => pickRandom(ALL_SCENARIOS_POOL, 4))
   const [scenarioWordCount, setScenarioWordCount] = useState(200)
+  const [selectedGrammars, setSelectedGrammars] = useState([])
+  const [grammarArticle, setGrammarArticle] = useState(null)
+  const [grammarLoading, setGrammarLoading] = useState(false)
+  const [grammarError, setGrammarError] = useState(null)
+  const [grammarDifficulty, setGrammarDifficulty] = useState('medium')
+  const [grammarWordCount, setGrammarWordCount] = useState(200)
+
   const [showApiConfig, setShowApiConfig] = useState(false)
   const [apiConfigured, setApiConfigured] = useState(() => isLLMConfigured())
 
@@ -470,9 +496,9 @@ export default function Read() {
 
   /* ── loading animation ── */
   useEffect(() => {
-    if (synthesisLoading || scenarioLoading) {
+    if (synthesisLoading || scenarioLoading || grammarLoading) {
       setLoadingMsgIdx(0)
-      const messages = scenarioLoading ? SCENARIO_LOADING_MESSAGES : LOADING_MESSAGES
+      const messages = grammarLoading ? GRAMMAR_LOADING_MESSAGES : scenarioLoading ? SCENARIO_LOADING_MESSAGES : LOADING_MESSAGES
       let i = 0
       loadingTimerRef.current = setInterval(() => {
         i++
@@ -484,7 +510,7 @@ export default function Read() {
     return () => {
       if (loadingTimerRef.current) clearInterval(loadingTimerRef.current)
     }
-  }, [synthesisLoading, scenarioLoading])
+  }, [synthesisLoading, scenarioLoading, grammarLoading])
 
   /* ── cache ── */
 
@@ -498,9 +524,6 @@ export default function Read() {
       if (readCache.scenario.article) setLlmArticle(readCache.scenario.article)
       if (readCache.scenario.customScenario) setCustomScenario(readCache.scenario.customScenario)
       if (readCache.scenario.lastGenParams) setLastGenParams(readCache.scenario.lastGenParams)
-    }
-    if (readCache.analyze && !text) {
-      setText(readCache.analyze.text || '')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -526,13 +549,6 @@ export default function Read() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [llmArticle, selectedScenario])
-
-  // Cache analyze text
-  useEffect(() => {
-    if (text.trim()) {
-      setReadCache((prev) => ({ ...prev, analyze: { text } }))
-    }
-  }, [text]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── derived ── */
 
@@ -653,30 +669,6 @@ export default function Read() {
     setScenarioError(null)
   }
 
-  /* ── Manual Analyze: out-of-scope detection ── */
-
-  function buildWhitelist(sentences) {
-    const whitelist = new Set()
-    sentences.forEach((s) => {
-      const parts = s.split(/\s+/)
-      parts.forEach((p, idx) => {
-        const m = p.match(/^([A-Z][a-z]+(?:[-'][A-Za-z]+)*)$/)
-        if (m) {
-          if (idx !== 0 || (parts[idx + 1] && parts[idx + 1].match(/^[A-Z][a-z]+$/))) {
-            whitelist.add(m[1].toLowerCase())
-          }
-        }
-        const m2 = p.match(/^([A-Z]{2,})$/)
-        if (m2) whitelist.add(m2[1].toLowerCase())
-      })
-    })
-    return whitelist
-  }
-
-  const analyzeOutOfScope = useMemo(() => {
-    return computeOutOfScope(text, poolSet)
-  }, [text, poolSet])
-
   /* ── Smart Synthesis: generate ── */
 
   function handleGenerateSynthesis() {
@@ -695,6 +687,59 @@ export default function Read() {
       setSynthesisLoading(false)
     }, 1600)
   }
+
+  /* ── Grammar Focus: generate ── */
+
+  function toggleGrammar(id) {
+    setSelectedGrammars((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
+    )
+  }
+
+  async function handleGrammarGenerate() {
+    if (selectedGrammars.length === 0) return
+    setGrammarError(null)
+    setGrammarLoading(true)
+    setGrammarArticle(null)
+    const prompt = {
+      scenario: `请编写一篇英语短文。难度级别：${grammarDifficulty === 'easy' ? '初级' : grammarDifficulty === 'medium' ? '中级' : '高级'}。字数限制：大约 ${grammarWordCount} 词。核心要求：请在文章中极其自然地高频使用以下语法结构：${selectedGrammars.map((id) => GRAMMAR_OPTIONS.find((g) => g.id === id)?.label || id).join('、')}。直接输出正文，不要有任何前缀或解释。`,
+      difficulty: grammarDifficulty,
+      wordCount: grammarWordCount,
+    }
+    try {
+      const article = await generateArticle(prompt)
+      setGrammarArticle({ ...article, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
+    } catch (e) {
+      setGrammarError(mapLLMError(e))
+    } finally {
+      setGrammarLoading(false)
+    }
+  }
+
+  async function handleGrammarRegenerate() {
+    if (selectedGrammars.length === 0) return
+    setGrammarError(null)
+    setGrammarLoading(true)
+    setGrammarArticle(null)
+    const prompt = {
+      scenario: `请编写一篇英语短文。难度级别：${grammarDifficulty === 'easy' ? '初级' : grammarDifficulty === 'medium' ? '中级' : '高级'}。字数限制：大约 ${grammarWordCount} 词。核心要求：请在文章中极其自然地高频使用以下语法结构：${selectedGrammars.map((id) => GRAMMAR_OPTIONS.find((g) => g.id === id)?.label || id).join('、')}。直接输出正文，不要有任何前缀或解释。`,
+      difficulty: grammarDifficulty,
+      wordCount: grammarWordCount,
+    }
+    try {
+      const article = await generateArticle(prompt)
+      setGrammarArticle({ ...article, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
+    } catch (e) {
+      setGrammarError(mapLLMError(e))
+    } finally {
+      setGrammarLoading(false)
+    }
+  }
+
+  const grammarHighlightSet = useMemo(() => {
+    if (!grammarArticle || !grammarArticle.paragraphs) return new Set()
+    return computeOutOfScope(grammarArticle.paragraphs.join(' '), poolSet)
+  }, [grammarArticle, poolSet])
 
   /* ── prompt preview ── */
 
@@ -793,7 +838,7 @@ export default function Read() {
         <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
           {tabItem('synthesis', <Sparkles size={16} />, '智能合成')}
           {tabItem('scenario', <BookOpen size={16} />, '场景探索')}
-          {tabItem('analyze', <FileText size={16} />, '自由分析')}
+          {tabItem('grammar', <Zap size={16} />, '语法专项')}
         </div>
       </div>
 
@@ -1125,49 +1170,134 @@ export default function Read() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════
-          Tab 3 — Manual Analyze
+          Tab 3 — Grammar Focus
           ═══════════════════════════════════════════════════════════ */}
-      {activeTab === 'analyze' && (
+      {activeTab === 'grammar' && (
         <div className="max-w-2xl mx-auto">
-          <p className="text-sm text-gray-400 mb-4">
-            粘贴英文文本，系统将自动识别超出当前词库的词汇（红色虚线下划线），点击任意单词查看释义。
+          <p className="text-sm text-gray-400 mb-5">
+            选择你想练习的语法点，AI 将生成一篇包含这些语法结构的短文。
           </p>
 
-          <div className="mb-4">
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={8}
-              className="w-full p-4 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 resize-y transition-shadow"
-              placeholder="粘贴英文短文到这里..."
-            />
+          {/* Grammar point selector grid */}
+          <div className="mb-6">
+            <p className="text-xs text-gray-500 mb-3 font-medium">选择语法结构（可多选）</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {GRAMMAR_OPTIONS.map((g) => {
+                const active = selectedGrammars.includes(g.id)
+                return (
+                  <button key={g.id} onClick={() => toggleGrammar(g.id)}
+                    className={`text-sm px-4 py-2.5 rounded-xl border transition-all text-left ${
+                      active
+                        ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {g.label}
+                    {active && <span className="float-right text-white/70">✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+            {selectedGrammars.length > 0 && (
+              <p className="text-xs text-gray-400 mt-2">
+                已选 {selectedGrammars.length} 个语法点
+              </p>
+            )}
           </div>
 
-          {text.trim() && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-              <ImmersiveReader
-                paragraphs={[text]}
-                poolMap={poolMap}
-                learningQueue={learningQueue}
-                setLearningQueue={setLearningQueue}
-                highlightSet={analyzeOutOfScope}
-              />
+          {/* Difficulty + word count */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-400">难度</label>
+                <select value={grammarDifficulty} onChange={(e) => setGrammarDifficulty(e.target.value)}
+                  className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                  <option value="easy">初级</option>
+                  <option value="medium">中级</option>
+                  <option value="hard">高级</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-400">目标词数</label>
+                <select value={grammarWordCount} onChange={(e) => setGrammarWordCount(Number(e.target.value))}
+                  className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                  <option value={100}>~100 词</option>
+                  <option value={200}>~200 词</option>
+                  <option value={300}>~300 词</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Generate button / Loading / Article */}
+          {!grammarArticle && !grammarLoading && (
+            <div className="text-center py-6">
+              <button
+                onClick={handleGrammarGenerate}
+                disabled={selectedGrammars.length === 0}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                <Zap size={18} />
+                按照选定语法生成
+              </button>
+              {selectedGrammars.length === 0 && (
+                <p className="text-xs text-gray-400 mt-2">请先选择至少一个语法结构</p>
+              )}
             </div>
           )}
 
-          {!text.trim() && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 flex items-center justify-center text-center">
-              <div>
-                <p className="text-4xl mb-4">📝</p>
-                <p className="text-gray-400 text-sm">在上方粘贴文本后，分析结果将出现在这里</p>
-                {readCache.analyze?.text && (
-                  <p className="text-xs text-gray-400 mt-3">
-                    检测到缓存的文本，
-                    <button onClick={() => setText(readCache.analyze.text)}
-                      className="text-gray-600 underline hover:text-gray-900">点击恢复</button>
-                  </p>
-                )}
+          {grammarLoading && (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="relative w-16 h-16 mb-6">
+                <div className="absolute inset-0 border-4 border-gray-100 rounded-full" />
+                <div className="absolute inset-0 border-4 border-transparent border-t-gray-900 rounded-full animate-spin" />
+                <div className="absolute inset-2 border-4 border-transparent border-t-amber-300 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
               </div>
+              <p className="text-sm font-medium text-gray-600 mb-1">正在生成</p>
+              <p className="text-xs text-gray-400 animate-pulse transition-all duration-500" key={loadingMsgIdx}>
+                {GRAMMAR_LOADING_MESSAGES[loadingMsgIdx]}
+              </p>
+            </div>
+          )}
+
+          {grammarError && !grammarLoading && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={20} className="text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-red-700">{grammarError}</p>
+                  <button onClick={() => setGrammarError(null)}
+                    className="text-sm text-red-600 underline mt-2 hover:text-red-800">清除错误</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {grammarArticle && !grammarLoading && (
+            <div>
+              <ArticleCard
+                title={`语法练习 · ${grammarArticle.grammarFocus?.length || selectedGrammars.length} 个语法点`}
+                meta={`难度：${grammarDifficulty === 'easy' ? '初级' : grammarDifficulty === 'medium' ? '中级' : '高级'} · 约 ${grammarWordCount} 词`}
+                paragraphs={grammarArticle.paragraphs}
+                highlightSet={grammarHighlightSet}
+                onRegenerate={handleGrammarRegenerate}
+              />
+              {grammarArticle.grammarFocus && (
+                <div className="bg-indigo-50/40 rounded-xl border border-indigo-100 p-4">
+                  <p className="text-xs font-medium text-indigo-700 mb-2">文中应包含的语法结构</p>
+                  <div className="flex flex-wrap gap-2">
+                    {grammarArticle.grammarFocus.map((gid) => {
+                      const g = GRAMMAR_OPTIONS.find((o) => o.id === gid)
+                      return g ? (
+                        <span key={gid}
+                          className="inline-flex items-center px-3 py-1 bg-white border border-indigo-200 rounded-lg text-xs text-indigo-700">
+                          {g.label}
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
