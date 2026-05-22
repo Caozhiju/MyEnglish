@@ -135,3 +135,18 @@ export async function generateArticle({ scenario, difficulty = 'medium', wordCou
     paragraphs: result.paragraphs.filter((p) => typeof p === 'string' && p.trim()),
   }
 }
+
+export async function fetchWordDefinition(word, contextSentence) {
+  if (!word || !contextSentence) {
+    throw new LLMError('INVALID_PARAMS', '单词和上下文句子不能为空')
+  }
+  const prompt = `请解释单词"${word}"在句子"${contextSentence}"中的准确含义。要求直接输出：【词性】+ 中文释义。不要任何多余的废话。例如：【动词】放弃、抛弃。`
+  const raw = await chatCompletion(
+    [
+      { role: 'system', content: '你是一位英语词汇专家。请严格按照要求输出。' },
+      { role: 'user', content: prompt },
+    ],
+    { temperature: 0.3, maxTokens: 128 }
+  )
+  return raw.trim()
+}

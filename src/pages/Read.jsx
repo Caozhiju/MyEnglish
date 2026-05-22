@@ -9,6 +9,7 @@ import { playAudio } from '../utils/tts'
 import {
   generateArticle,
   isLLMConfigured,
+  fetchWordDefinition,
 } from '../services/llmService'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -252,7 +253,28 @@ function ImmersiveReader({
       x: rect.left + rect.width / 2,
       y: rect.top - 8,
       definitionEntry: entry,
+      manualTranslation: '',
+      isFetchingDef: false,
     })
+  }
+
+  async function handleAiDefinition() {
+    if (!popup) return
+    const capturedWord = popup.word
+    const capturedSentence = popup.sentence
+    setPopup((prev) => ({ ...prev, isFetchingDef: true }))
+    try {
+      const def = await fetchWordDefinition(capturedWord, capturedSentence)
+      setPopup((prev) => {
+        if (prev?.normalized !== capturedWord.toLowerCase()) return prev
+        return { ...prev, manualTranslation: def, isFetchingDef: false }
+      })
+    } catch {
+      setPopup((prev) => {
+        if (prev?.normalized !== capturedWord.toLowerCase()) return prev
+        return { ...prev, isFetchingDef: false }
+      })
+    }
   }
 
   function saveWordToQueue() {
@@ -269,10 +291,13 @@ function ImmersiveReader({
       )
       setLearningQueue(updated)
     } else {
+      const translations = popup.manualTranslation
+        ? [{ type: 'AI释义', translation: popup.manualTranslation }]
+        : popup.definitionEntry?.translations || []
       const item = {
         id: `${word}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         word,
-        translations: popup.definitionEntry?.translations || [],
+        translations,
         phrases: [],
         isFavorite: true,
         nextReviewDate: startOfDayISO(0),
@@ -299,10 +324,13 @@ function ImmersiveReader({
       )
       setLearningQueue(updated)
     } else {
+      const translations = popup.manualTranslation
+        ? [{ type: 'AI释义', translation: popup.manualTranslation }]
+        : popup.definitionEntry?.translations || []
       const item = {
         id: `${word}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         word,
-        translations: popup.definitionEntry?.translations || [],
+        translations,
         phrases: [],
         isFavorite: false,
         nextReviewDate: startOfDayISO(0),
@@ -389,7 +417,25 @@ function ImmersiveReader({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 mb-3">未收录 · 词库中暂无该词</p>
+            <div className="mb-3">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={popup.manualTranslation || ''}
+                  onChange={(e) => setPopup((prev) => ({ ...prev, manualTranslation: e.target.value }))}
+                  placeholder="输入中文释义..."
+                  className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-gray-400 transition-colors"
+                />
+                <button
+                  onClick={handleAiDefinition}
+                  disabled={popup.isFetchingDef}
+                  className="flex-shrink-0 px-2 py-1.5 text-xs rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 text-purple-700 hover:from-purple-100 hover:to-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="AI 获取释义"
+                >
+                  {popup.isFetchingDef ? '...' : '✨ AI'}
+                </button>
+              </div>
+            </div>
           )}
 
           <p className="text-xs text-gray-400 mb-3 leading-relaxed line-clamp-2 border-l-2 border-gray-200 pl-2">
