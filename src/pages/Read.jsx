@@ -8,7 +8,6 @@ import { useStorage } from '../hooks/useStorage'
 import { playAudio } from '../utils/tts'
 import {
   generateArticle,
-  generateScenarioTopics,
   getLLMConfig,
   saveLLMConfig,
   isLLMConfigured,
@@ -80,13 +79,32 @@ function computeOutOfScope(text, poolSet) {
    Scenario data
    ═══════════════════════════════════════════════════════════════ */
 
-const DEFAULT_SCENARIOS = [
+function pickRandom(arr, n) {
+  const shuffled = shuffle([...arr])
+  return shuffled.slice(0, n)
+}
+
+const ALL_SCENARIOS_POOL = [
   { id: 'daily-routine', emoji: '🌅', title: 'A Perfect Morning Routine', topic: 'daily', difficulty: 'easy' },
   { id: 'tech-future', emoji: '🚀', title: 'How AI Is Changing Education', topic: 'technology', difficulty: 'medium' },
   { id: 'business-negotiation', emoji: '💼', title: 'The Art of Negotiation', topic: 'business', difficulty: 'medium' },
   { id: 'health-sleep', emoji: '😴', title: 'Why Sleep Is Your Superpower', topic: 'health', difficulty: 'hard' },
   { id: 'travel-solo', emoji: '✈️', title: 'The Joys of Traveling Alone', topic: 'travel', difficulty: 'easy' },
   { id: 'academic-research', emoji: '🔬', title: 'How to Read a Research Paper', topic: 'academic', difficulty: 'hard' },
+  { id: 'ai-anxiety', emoji: '🤖', title: 'Unemployment Anxiety in the AI Era', topic: 'technology', difficulty: 'hard' },
+  { id: 'mars-cafe', emoji: '☕', title: 'Opening a Coffee Shop on Mars', topic: 'travel', difficulty: 'medium' },
+  { id: 'ielts-speaking', emoji: '🎤', title: 'IELTS Speaking Mock Interview', topic: 'academic', difficulty: 'hard' },
+  { id: 'intro-linguistics', emoji: '📖', title: 'An Introduction to Cognitive Linguistics', topic: 'academic', difficulty: 'hard' },
+  { id: 'vc-pitch', emoji: '💎', title: 'A Venture Capital Pitch in Silicon Valley', topic: 'business', difficulty: 'medium' },
+  { id: 'deep-work', emoji: '🧠', title: 'Deep Work: How to Focus in a Distracted World', topic: 'daily', difficulty: 'medium' },
+  { id: 'street-food', emoji: '🍜', title: 'A Food Tour Through Southeast Asia', topic: 'travel', difficulty: 'easy' },
+  { id: 'climate-action', emoji: '🌍', title: 'Small Actions for a Greener Planet', topic: 'health', difficulty: 'medium' },
+  { id: 'startup-culture', emoji: '🚀', title: 'Building a Startup from Zero', topic: 'business', difficulty: 'medium' },
+  { id: 'remote-work', emoji: '🏠', title: 'The Remote Work Revolution', topic: 'daily', difficulty: 'easy' },
+  { id: 'film-review', emoji: '🎬', title: 'Writing a Compelling Film Review', topic: 'daily', difficulty: 'easy' },
+  { id: 'meditation', emoji: '🧘', title: 'Mindfulness and Meditation for Beginners', topic: 'health', difficulty: 'easy' },
+  { id: 'data-privacy', emoji: '🔒', title: 'Why Data Privacy Matters More Than Ever', topic: 'technology', difficulty: 'medium' },
+  { id: 'debate-club', emoji: '🗣️', title: 'How to Win a Formal Debate', topic: 'academic', difficulty: 'hard' },
 ]
 
 const TOPIC_OPTIONS = [
@@ -438,14 +456,12 @@ export default function Read() {
   const [llmArticle, setLlmArticle] = useState(null)
   const [scenarioTopic, setScenarioTopic] = useState('all')
   const [scenarioDifficulty, setScenarioDifficulty] = useState('all')
-  const [scenarioLength, setScenarioLength] = useState(200)
   const [customScenario, setCustomScenario] = useState('')
   const [scenarioLoading, setScenarioLoading] = useState(false)
   const [scenarioError, setScenarioError] = useState(null)
   const [lastGenParams, setLastGenParams] = useState(null)
-  const [dynamicTopics, setDynamicTopics] = useState(null)
-  const [topicsLoading, setTopicsLoading] = useState(false)
-  const [shuffleSeed, setShuffleSeed] = useState(0)
+  const [visibleScenarios, setVisibleScenarios] = useState(() => pickRandom(ALL_SCENARIOS_POOL, 4))
+  const [scenarioWordCount, setScenarioWordCount] = useState(200)
   const [showApiConfig, setShowApiConfig] = useState(false)
   const [apiConfigured, setApiConfigured] = useState(() => isLLMConfigured())
 
@@ -480,7 +496,6 @@ export default function Read() {
     if (readCache.scenario && !llmArticle) {
       if (readCache.scenario.topic) setSelectedScenario(readCache.scenario.topic)
       if (readCache.scenario.article) setLlmArticle(readCache.scenario.article)
-      if (readCache.scenario.length) setScenarioLength(readCache.scenario.length)
       if (readCache.scenario.customScenario) setCustomScenario(readCache.scenario.customScenario)
       if (readCache.scenario.lastGenParams) setLastGenParams(readCache.scenario.lastGenParams)
     }
@@ -504,14 +519,13 @@ export default function Read() {
         scenario: {
           topic: selectedScenario,
           article: llmArticle,
-          length: scenarioLength,
           customScenario,
           lastGenParams,
         },
       }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [llmArticle, selectedScenario, scenarioLength])
+  }, [llmArticle, selectedScenario])
 
   // Cache analyze text
   useEffect(() => {
@@ -550,26 +564,25 @@ export default function Read() {
 
   /* ── scenario filtering ── */
 
-  const scenarioCardSource = useMemo(() => {
-    return dynamicTopics || DEFAULT_SCENARIOS
-  }, [dynamicTopics])
-
-  const filteredScenarios = useMemo(() => {
-    return scenarioCardSource.filter((sc) => {
+  const filteredForGrid = useMemo(() => {
+    return visibleScenarios.filter((sc) => {
       if (scenarioTopic !== 'all' && sc.topic !== scenarioTopic) return false
       if (scenarioDifficulty !== 'all' && sc.difficulty !== scenarioDifficulty) return false
       return true
     })
-  }, [scenarioCardSource, scenarioTopic, scenarioDifficulty])
-
-  const displayedScenarios = useMemo(() => {
-    return shuffle(filteredScenarios)
-  }, [filteredScenarios, shuffleSeed])
+  }, [visibleScenarios, scenarioTopic, scenarioDifficulty])
 
   const scenarioHighlightSet = useMemo(() => {
     if (!llmArticle || !llmArticle.paragraphs) return new Set()
     return computeOutOfScope(llmArticle.paragraphs.join(' '), poolSet)
   }, [llmArticle, poolSet])
+
+  function handleShuffle() {
+    setVisibleScenarios(pickRandom(ALL_SCENARIOS_POOL, 4))
+    setSelectedScenario(null)
+    setLlmArticle(null)
+    setScenarioError(null)
+  }
 
   /* ── scenario handlers ── */
 
@@ -593,37 +606,22 @@ export default function Read() {
     }
   }
 
-  async function handleCustomGenerate() {
-    if (!customScenario.trim()) return
+  async function handleGenerate(scenarioTitle, scObj) {
     setScenarioError(null)
     setScenarioLoading(true)
     setLlmArticle(null)
-    setSelectedScenario({ id: 'custom', emoji: '✨', title: customScenario.trim(), topic: 'custom', difficulty: scenarioDifficulty })
-    const params = { scenario: customScenario.trim(), difficulty: scenarioDifficulty, wordCount: scenarioLength }
-    setLastGenParams(params)
-    try {
-      const article = await generateArticle(params)
-      setLlmArticle({ ...article, scenarioDesc: customScenario.trim(), generatedAt: Date.now() })
-    } catch (e) {
-      setScenarioError(mapLLMError(e))
-    } finally {
-      setScenarioLoading(false)
-    }
-  }
-
-  async function handlePresetGenerate(sc) {
-    setScenarioError(null)
-    setScenarioLoading(true)
-    setLlmArticle(null)
+    const isCustom = !scObj
+    const displayTitle = isCustom ? scenarioTitle : `${scObj.emoji} ${scObj.title}`
+    const sc = isCustom ? { id: 'custom', emoji: '✨', title: scenarioTitle, topic: 'custom', difficulty: scenarioDifficulty } : scObj
     setSelectedScenario(sc)
-    const scenarioDesc = customScenario.trim()
-      ? `${sc.emoji} ${sc.title}（上下文：${customScenario.trim()}）`
-      : `${sc.emoji} ${sc.title}`
-    const params = { scenario: scenarioDesc, difficulty: sc.difficulty, wordCount: scenarioLength }
+    const finalDesc = customScenario.trim()
+      ? `${displayTitle}（上下文：${customScenario.trim()}）`
+      : displayTitle
+    const params = { scenario: finalDesc, difficulty: sc.difficulty, wordCount: scenarioWordCount }
     setLastGenParams(params)
     try {
       const article = await generateArticle(params)
-      setLlmArticle({ ...article, scenarioDesc: sc.title, generatedAt: Date.now() })
+      setLlmArticle({ ...article, scenarioDesc: displayTitle, generatedAt: Date.now() })
     } catch (e) {
       setScenarioError(mapLLMError(e))
     } finally {
@@ -631,19 +629,7 @@ export default function Read() {
     }
   }
 
-  async function handleRefreshTopics() {
-    setTopicsLoading(true)
-    try {
-      const topics = await generateScenarioTopics(5)
-      setDynamicTopics(topics)
-    } catch (e) {
-      setScenarioError(mapLLMError(e))
-    } finally {
-      setTopicsLoading(false)
-    }
-  }
-
-  async function handleScenarioRegenerate() {
+  async function handleRegenerate() {
     if (!lastGenParams) return
     setScenarioError(null)
     setScenarioLoading(true)
@@ -958,58 +944,181 @@ export default function Read() {
           ═══════════════════════════════════════════════════════════ */}
       {activeTab === 'scenario' && (
         <div>
-          <p className="text-sm text-gray-400 mb-5">
-            按话题、难度和长度筛选，阅读一篇为你定制的英文文章。点击文中任意单词查看释义并收藏。
-          </p>
-          <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-            <label className="text-xs text-gray-400">话题</label>
-            <select value={scenarioTopic} onChange={(e) => setScenarioTopic(e.target.value)}
-              className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
-              <option value="all">全部话题</option>
-              <option value="daily">日常闲谈</option>
-              <option value="business">商务</option>
-              <option value="academic">学术</option>
-              <option value="travel">旅游</option>
-              <option value="technology">科技</option>
-              <option value="health">健康</option>
-            </select>
-            <label className="text-xs text-gray-400">难度</label>
-            <select value={scenarioDifficulty} onChange={(e) => setScenarioDifficulty(e.target.value)}
-              className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
-              <option value="all">全部难度</option>
-              <option value="easy">初级</option>
-              <option value="medium">中级</option>
-              <option value="hard">高级</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
-            {displayedScenarios.map((sc) => (
-              <button key={sc.id} onClick={() => handlePresetGenerate(sc)}
-                className="group text-left bg-white rounded-xl border border-gray-100 shadow-sm p-6 hover:border-gray-300 hover:shadow-md transition-all">
-                <span className="text-2xl">{sc.emoji}</span>
-                <h3 className="font-semibold text-gray-900 mb-1 mt-2">{sc.title}</h3>
-                <p className="text-xs text-gray-400">{sc.topic}</p>
-              </button>
-            ))}
-          </div>
+          {/* ── Grid mode: pick a scenario ── */}
+          {!selectedScenario && (
+            <div>
+              <p className="text-sm text-gray-400 mb-5">
+                输入自定义场景，或从下方主题中任选一个，AI 将为你生成一篇英语学习短文。
+              </p>
 
-          {selectedScenario && (
-            <div className="max-w-2xl mx-auto mt-8">
-              {scenarioLoading ? (
-                <p className="text-gray-400">正在生成文章...</p>
-              ) : llmArticle ? (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-                  <h3 className="text-lg font-bold mb-4">{llmArticle.title}</h3>
-                  {llmArticle.paragraphs.map((p, i) => (
-                    <p key={i} className="text-gray-700 mb-4 last:mb-0">{p}</p>
+              {/* Custom input + word count + generate button */}
+              <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={customScenario}
+                    onChange={(e) => setCustomScenario(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && customScenario.trim()) handleGenerate(customScenario.trim()) }}
+                    placeholder="输入你感兴趣的场景，例如：在火星上开咖啡馆..."
+                    className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-shadow"
+                  />
+                  <button
+                    onClick={() => { if (customScenario.trim()) handleGenerate(customScenario.trim()) }}
+                    disabled={scenarioLoading || !customScenario.trim()}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  >
+                    {scenarioLoading ? '生成中...' : <><Sparkles size={16} /> 立即生成</>}
+                  </button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400">目标词数</label>
+                    <select value={scenarioWordCount} onChange={(e) => setScenarioWordCount(Number(e.target.value))}
+                      className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                      <option value={100}>~100 词</option>
+                      <option value={150}>~150 词</option>
+                      <option value={200}>~200 词</option>
+                      <option value={300}>~300 词</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400">难度</label>
+                    <select value={scenarioDifficulty} onChange={(e) => setScenarioDifficulty(e.target.value)}
+                      className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                      <option value="easy">初级</option>
+                      <option value="medium">中级</option>
+                      <option value="hard">高级</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter bar + shuffle */}
+              <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-400">话题</label>
+                  <select value={scenarioTopic} onChange={(e) => setScenarioTopic(e.target.value)}
+                    className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                    <option value="all">全部话题</option>
+                    <option value="daily">日常闲谈</option>
+                    <option value="business">商务</option>
+                    <option value="academic">学术</option>
+                    <option value="travel">旅游</option>
+                    <option value="technology">科技</option>
+                    <option value="health">健康</option>
+                  </select>
+                  <label className="text-xs text-gray-400">难度</label>
+                  <select value={scenarioDifficulty} onChange={(e) => setScenarioDifficulty(e.target.value)}
+                    className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700">
+                    <option value="all">全部难度</option>
+                    <option value="easy">初级</option>
+                    <option value="medium">中级</option>
+                    <option value="hard">高级</option>
+                  </select>
+                </div>
+                <button onClick={handleShuffle}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
+                  <RefreshCw size={13} />
+                  换一批灵感
+                </button>
+              </div>
+
+              {/* Scenario grid */}
+              {filteredForGrid.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+                  {filteredForGrid.map((sc) => (
+                    <button key={sc.id} onClick={() => handleGenerate(sc.title, sc)}
+                      className="group text-left bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:border-gray-300 hover:shadow-md transition-all">
+                      <div className="flex items-start justify-between mb-2">
+                        <span className="text-2xl">{sc.emoji}</span>
+                        {difficultyBadge(sc.difficulty)}
+                      </div>
+                      <h3 className="font-semibold text-gray-900 mb-1">{sc.title}</h3>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">
+                        {TOPIC_OPTIONS.find((t) => t.value === sc.topic)?.label || sc.topic}
+                      </p>
+                      <div className="flex items-center gap-1 mt-3 text-xs text-gray-300 group-hover:text-gray-900 transition-colors">
+                        <span>生成文章</span>
+                        <ArrowRight size={14} />
+                      </div>
+                    </button>
                   ))}
                 </div>
-              ) : scenarioError ? (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <p className="text-sm text-red-700">{scenarioError}</p>
-                  <button onClick={handleBackToGrid} className="text-sm text-red-600 underline mt-2">返回</button>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 flex items-center justify-center text-center">
+                  <div>
+                    <p className="text-4xl mb-4">🔍</p>
+                    <p className="text-gray-400 text-sm">当前筛选条件下暂无场景，试试调整话题或难度</p>
+                  </div>
                 </div>
-              ) : null}
+              )}
+            </div>
+          )}
+
+          {/* ── Article mode: reading view ── */}
+          {selectedScenario && (
+            <div className="max-w-2xl mx-auto">
+              {/* Back + regenerate header */}
+              <div className="flex items-center justify-between mb-6">
+                <button onClick={handleBackToGrid}
+                  className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1">
+                  ← 返回列表
+                </button>
+                {llmArticle && !scenarioLoading && (
+                  <button onClick={handleRegenerate}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                    <RefreshCw size={14} />
+                    换一篇
+                  </button>
+                )}
+              </div>
+
+              {/* Loading */}
+              {scenarioLoading && (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="relative w-16 h-16 mb-6">
+                    <div className="absolute inset-0 border-4 border-gray-100 rounded-full" />
+                    <div className="absolute inset-0 border-4 border-transparent border-t-gray-900 rounded-full animate-spin" />
+                    <div className="absolute inset-2 border-4 border-transparent border-t-amber-300 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
+                  </div>
+                  <p className="text-sm font-medium text-gray-600 mb-1">AI 正在为你撰写文章</p>
+                  <p className="text-xs text-gray-400 animate-pulse">{SCENARIO_LOADING_MESSAGES[loadingMsgIdx]}</p>
+                </div>
+              )}
+
+              {/* Error */}
+              {scenarioError && !scenarioLoading && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={20} className="text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-red-700">{scenarioError}</p>
+                      <div className="flex gap-3 mt-3">
+                        <button onClick={handleBackToGrid}
+                          className="text-sm text-red-600 underline hover:text-red-800">返回列表</button>
+                        <button onClick={handleRegenerate}
+                          className="text-sm text-red-600 underline hover:text-red-800">重试</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Article */}
+              {llmArticle && !scenarioLoading && (
+                <div>
+                  <ArticleCard
+                    title={llmArticle.title || selectedScenario.emoji + ' ' + selectedScenario.title}
+                    meta={llmArticle.scenarioDesc ? `场景：${llmArticle.scenarioDesc}` : undefined}
+                    paragraphs={llmArticle.paragraphs}
+                    highlightSet={scenarioHighlightSet}
+                    onRegenerate={handleRegenerate}
+                  />
+                  <p className="text-xs text-gray-300">
+                    约 {countWords(llmArticle.paragraphs.join(' '))} 词
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
