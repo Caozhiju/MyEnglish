@@ -8,8 +8,6 @@ import { useStorage } from '../hooks/useStorage'
 import { playAudio } from '../utils/tts'
 import {
   generateArticle,
-  getLLMConfig,
-  saveLLMConfig,
   isLLMConfigured,
 } from '../services/llmService'
 
@@ -488,7 +486,6 @@ export default function Read() {
   const [grammarDifficulty, setGrammarDifficulty] = useState('medium')
   const [grammarWordCount, setGrammarWordCount] = useState(200)
 
-  const [showApiConfig, setShowApiConfig] = useState(false)
   const [apiConfigured, setApiConfigured] = useState(() => isLLMConfigured())
 
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
