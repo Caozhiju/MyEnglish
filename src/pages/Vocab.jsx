@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Volume2, Star, RefreshCw } from 'lucide-react'
 import { useStorage } from '../hooks/useStorage'
+import { useSyncStorage } from '../hooks/useSyncStorage'
 import { loadVocabulary, getVocabSources } from '../services/dataService'
 import { playAudio, cancelAudio } from '../utils/tts'
 
@@ -63,9 +64,9 @@ function getMockExamples(word) {
 /* ── component ── */
 
 export default function Vocab() {
-  /* ── persistent state ── */
-  const [globalWordPool, setGlobalWordPool] = useStorage('globalWordPool', [])
-  const [learningQueue, setLearningQueue] = useStorage('learningQueue', [])
+  /* ── persistent state (cloud-synced) ── */
+  const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
+  const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   
   /* ── 新增：当前学习会话（包含今日队列和日期） ── */
   const [currentSession, setCurrentSession] = useStorage('currentSession', {

@@ -5,6 +5,7 @@ import {
   Eye, EyeOff, XCircle, Settings, AlertCircle,
 } from 'lucide-react'
 import { useStorage } from '../hooks/useStorage'
+import { useSyncStorage } from '../hooks/useSyncStorage'
 import { playAudio } from '../utils/tts'
 import {
   generateArticle,
@@ -504,8 +505,8 @@ const GRAMMAR_OPTIONS = [
 
 export default function Read() {
   /* ── ALL state declarations at top (no TDZ issues) ── */
-  const [globalWordPool, setGlobalWordPool] = useStorage('globalWordPool', [])
-  const [learningQueue, setLearningQueue] = useStorage('learningQueue', [])
+  const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
+  const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [readCache, setReadCache] = useStorage('readCache', {})
 
   const [activeTab, setActiveTab] = useState('synthesis')
