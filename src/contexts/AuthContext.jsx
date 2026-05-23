@@ -28,14 +28,15 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signIn = async (email, password) => {
+    if (!isSupabaseConfigured()) throw new Error('Supabase 未配置，请先设置环境变量')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
   }
 
   const signUp = async (email, password) => {
+    if (!isSupabaseConfigured()) throw new Error('Supabase 未配置，请先设置环境变量')
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
-    // Return whether user needs email confirmation
     return { needsEmailConfirmation: !data.session }
   }
 
