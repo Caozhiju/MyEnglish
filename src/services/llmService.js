@@ -107,32 +107,32 @@ export async function generateArticle({ scenario, difficulty = 'medium', wordCou
   }
   const levelGuide = difficultyGuide[difficulty] || difficultyGuide.medium
   const systemPrompt =
-    `你是一位英语阅读材料生成专家。请根据以下要求写一篇英语短文：
+    `你是一位英语阅读材料生成专家。请根据以下要求写一篇英语短文并附带中文翻译：
 
 - 主题/场景：${scenario}
 - 难度级别：${levelGuide}
-- 字数限制：大约 ${wordCount} 词
-- 直接输出正文，不要有任何废话和前缀
+- 字数限制：英语正文大约 ${wordCount} 词
 - 写 3-5 个自然段落
+- 直接输出 JSON，不要有任何废话和前缀
 
-重要：只返回一个 JSON 对象，不要任何其他文字：
-{"title": "文章标题", "paragraphs": ["第一段...", "第二段...", "第三段..."]}`
+重要：只返回一个 JSON 对象，不要任何其他文字，格式如下：
+{"english": "英文正文...", "chinese": "对应的中文翻译..."}`
 
-  const userPrompt = `请写一篇关于"${scenario}"的英语短文。`
+  const userPrompt = `请写一篇关于"${scenario}"的英语短文并附带中文翻译。`
   const raw = await chatCompletion(
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    { temperature: 0.85, maxTokens: 2048 }
+    { temperature: 0.85, maxTokens: 3072 }
   )
   const result = extractJSON(raw)
-  if (!result.title || !Array.isArray(result.paragraphs)) {
-    throw new LLMError('JSON_PARSE_ERROR', 'AI 返回的数据缺少 title 或 paragraphs 字段，请重试。')
+  if (!result.english || !result.chinese) {
+    throw new LLMError('JSON_PARSE_ERROR', 'AI 返回的数据缺少 english 或 chinese 字段，请重试。')
   }
   return {
-    title: result.title,
-    paragraphs: result.paragraphs.filter((p) => typeof p === 'string' && p.trim()),
+    english: result.english.trim(),
+    chinese: result.chinese.trim(),
   }
 }
 

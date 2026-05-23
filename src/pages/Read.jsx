@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import {
   Sparkles, BookOpen, FileText, RefreshCw, ArrowRight,
@@ -39,6 +38,10 @@ function shuffle(arr) {
 
 function countWords(text) {
   return text.split(/\s+/).filter(Boolean).length
+}
+
+function splitIntoParagraphs(text) {
+  return text.split(/\n+/).filter(Boolean)
 }
 
 function computeOutOfScope(text, poolSet) {
@@ -359,17 +362,12 @@ function ImmersiveReader({
                 if (!token.isWord) {
                   return <span key={key}>{token.text}</span>
                 }
-                const hl = isHighlighted(token.text)
                 return (
                   <span
                     key={key}
                     onClick={(e) => handleWordClick(token, e)}
-                    className={`cursor-pointer transition-colors rounded px-0.5 -mx-0.5 ${
-                      hl
-                        ? 'text-red-600 underline decoration-dashed underline-offset-4 hover:text-red-800 hover:bg-red-50'
-                        : 'hover:bg-amber-50 hover:text-amber-900'
-                    }`}
-                    title={hl ? '超词库词汇 — 点击查看' : '点击查看释义'}
+                    className="cursor-pointer transition-colors rounded px-0.5 -mx-0.5 hover:bg-amber-50 hover:text-amber-900"
+                    title="点击查看释义"
                   >
                     {token.text}
                   </span>
@@ -534,6 +532,8 @@ export default function Read() {
   const [grammarWordCount, setGrammarWordCount] = useState(200)
 
   const [apiConfigured, setApiConfigured] = useState(() => isLLMConfigured())
+  const [showScenarioTranslation, setShowScenarioTranslation] = useState(false)
+  const [showGrammarTranslation, setShowGrammarTranslation] = useState(false)
 
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const loadingTimerRef = useRef(null)
@@ -633,8 +633,8 @@ export default function Read() {
   }, [visibleScenarios, scenarioTopic, scenarioDifficulty])
 
   const scenarioHighlightSet = useMemo(() => {
-    if (!llmArticle || !llmArticle.paragraphs) return new Set()
-    return computeOutOfScope(llmArticle.paragraphs.join(' '), poolSet)
+    if (!llmArticle?.english) return new Set()
+    return computeOutOfScope(llmArticle.english, poolSet)
   }, [llmArticle, poolSet])
 
   function handleShuffle() {
@@ -681,7 +681,7 @@ export default function Read() {
     setLastGenParams(params)
     try {
       const article = await generateArticle(params)
-      setLlmArticle({ ...article, scenarioDesc: displayTitle, generatedAt: Date.now() })
+      setLlmArticle({ english: article.english, chinese: article.chinese, scenarioDesc: displayTitle, generatedAt: Date.now() })
     } catch (e) {
       setScenarioError(mapLLMError(e))
     } finally {
@@ -696,7 +696,7 @@ export default function Read() {
     setLlmArticle(null)
     try {
       const article = await generateArticle(lastGenParams)
-      setLlmArticle({ ...article, scenarioDesc: lastGenParams.scenario, generatedAt: Date.now() })
+      setLlmArticle({ english: article.english, chinese: article.chinese, scenarioDesc: lastGenParams.scenario, generatedAt: Date.now() })
     } catch (e) {
       setScenarioError(mapLLMError(e))
       if (readCache.scenario?.article) {
@@ -752,7 +752,7 @@ export default function Read() {
     }
     try {
       const article = await generateArticle(prompt)
-      setGrammarArticle({ ...article, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
+      setGrammarArticle({ english: article.english, chinese: article.chinese, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
     } catch (e) {
       setGrammarError(mapLLMError(e))
     } finally {
@@ -772,7 +772,7 @@ export default function Read() {
     }
     try {
       const article = await generateArticle(prompt)
-      setGrammarArticle({ ...article, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
+      setGrammarArticle({ english: article.english, chinese: article.chinese, grammarFocus: [...selectedGrammars], generatedAt: Date.now() })
     } catch (e) {
       setGrammarError(mapLLMError(e))
     } finally {
@@ -781,8 +781,8 @@ export default function Read() {
   }
 
   const grammarHighlightSet = useMemo(() => {
-    if (!grammarArticle || !grammarArticle.paragraphs) return new Set()
-    return computeOutOfScope(grammarArticle.paragraphs.join(' '), poolSet)
+    if (!grammarArticle?.english) return new Set()
+    return computeOutOfScope(grammarArticle.english, poolSet)
   }, [grammarArticle, poolSet])
 
   /* ── prompt preview ── */
@@ -838,7 +838,7 @@ export default function Read() {
 
   /* ── Article shell (shared card for synthesis + scenario) ── */
 
-  function ArticleCard({ title, meta, paragraphs, highlightSet, onRegenerate }) {
+  function ArticleCard({ title, meta, paragraphs, highlightSet, onRegenerate, chinese, showTranslation, onToggleTranslation }) {
     return (
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -846,15 +846,25 @@ export default function Read() {
             <h3 className="text-lg font-bold text-gray-900">{title}</h3>
             {meta && <p className="text-xs text-gray-400 mt-0.5">{meta}</p>}
           </div>
-          {onRegenerate && (
-            <button
-              onClick={onRegenerate}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <RefreshCw size={14} />
-              换一篇
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {chinese && (
+              <button
+                onClick={onToggleTranslation}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {showTranslation ? '👁️ 隐藏全文翻译' : '👁️ 查看全文翻译'}
+              </button>
+            )}
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <RefreshCw size={14} />
+                换一篇
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-6">
@@ -865,6 +875,14 @@ export default function Read() {
             setLearningQueue={setLearningQueue}
             highlightSet={highlightSet}
           />
+          {chinese && showTranslation && (
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <p className="text-xs text-gray-400 mb-3 font-medium">中文翻译</p>
+              <div className="text-sm text-gray-500 italic leading-relaxed whitespace-pre-line">
+                {chinese}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -1197,14 +1215,17 @@ export default function Read() {
               {llmArticle && !scenarioLoading && (
                 <div>
                   <ArticleCard
-                    title={llmArticle.title || selectedScenario.emoji + ' ' + selectedScenario.title}
+                    title={selectedScenario.emoji + ' ' + selectedScenario.title}
                     meta={llmArticle.scenarioDesc ? `场景：${llmArticle.scenarioDesc}` : undefined}
-                    paragraphs={llmArticle.paragraphs}
+                    paragraphs={splitIntoParagraphs(llmArticle.english)}
                     highlightSet={scenarioHighlightSet}
                     onRegenerate={handleRegenerate}
+                    chinese={llmArticle.chinese}
+                    showTranslation={showScenarioTranslation}
+                    onToggleTranslation={() => setShowScenarioTranslation((v) => !v)}
                   />
                   <p className="text-xs text-gray-300">
-                    约 {countWords(llmArticle.paragraphs.join(' '))} 词
+                    约 {countWords(llmArticle.english)} 词
                   </p>
                 </div>
               )}
@@ -1322,9 +1343,12 @@ export default function Read() {
               <ArticleCard
                 title={`语法练习 · ${grammarArticle.grammarFocus?.length || selectedGrammars.length} 个语法点`}
                 meta={`难度：${grammarDifficulty === 'easy' ? '初级' : grammarDifficulty === 'medium' ? '中级' : '高级'} · 约 ${grammarWordCount} 词`}
-                paragraphs={grammarArticle.paragraphs}
+                paragraphs={splitIntoParagraphs(grammarArticle.english)}
                 highlightSet={grammarHighlightSet}
                 onRegenerate={handleGrammarRegenerate}
+                chinese={grammarArticle.chinese}
+                showTranslation={showGrammarTranslation}
+                onToggleTranslation={() => setShowGrammarTranslation((v) => !v)}
               />
               {grammarArticle.grammarFocus && (
                 <div className="bg-indigo-50/40 rounded-xl border border-indigo-100 p-4">
