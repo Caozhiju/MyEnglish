@@ -26,11 +26,13 @@ create policy "用户可以更新自己的进度"
   with check (auth.uid() = user_id);
 */
 
-import { supabase, isSupabaseConfigured } from '../supabaseClient'
+import { getSupabase, isSupabaseConfigured } from '../supabaseClient'
 
 export async function fetchUserProgress(userId) {
   if (!isSupabaseConfigured()) return {}
-  const { data, error } = await supabase
+  const sb = getSupabase()
+  if (!sb) return {}
+  const { data, error } = await sb
     .from('user_progress')
     .select('learning_queue, ignore_word_pool')
     .eq('user_id', userId)
@@ -41,12 +43,14 @@ export async function fetchUserProgress(userId) {
 
 export async function upsertUserProgress(userId, updates) {
   if (!isSupabaseConfigured()) return
+  const sb = getSupabase()
+  if (!sb) return
   const payload = {
     user_id: userId,
     updated_at: new Date().toISOString(),
     ...updates,
   }
-  const { error } = await supabase.from('user_progress').upsert(payload, {
+  const { error } = await sb.from('user_progress').upsert(payload, {
     onConflict: 'user_id',
   })
   if (error) throw error

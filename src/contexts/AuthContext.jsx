@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase, isSupabaseConfigured } from '../supabaseClient'
+import { getSupabase, isSupabaseConfigured } from '../supabaseClient'
 
 const AuthContext = createContext(null)
 
@@ -12,7 +12,12 @@ export function AuthProvider({ children }) {
       setLoading(false)
       return
     }
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const sb = getSupabase()
+    if (!sb) {
+      setLoading(false)
+      return
+    }
+    sb.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
     }).catch(() => {}).finally(() => {
       setLoading(false)
@@ -20,7 +25,7 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
     })
 
@@ -29,19 +34,22 @@ export function AuthProvider({ children }) {
 
   const signIn = async (email, password) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase 未配置，请先设置环境变量')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const sb = getSupabase()
+    const { error } = await sb.auth.signInWithPassword({ email, password })
     if (error) throw error
   }
 
   const signUp = async (email, password) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase 未配置，请先设置环境变量')
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const sb = getSupabase()
+    const { data, error } = await sb.auth.signUp({ email, password })
     if (error) throw error
     return { needsEmailConfirmation: !data.session }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    const sb = getSupabase()
+    if (sb) await sb.auth.signOut()
   }
 
   return (
