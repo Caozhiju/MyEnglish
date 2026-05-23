@@ -21,6 +21,7 @@ function LoginWidget() {
   const [mode, setMode] = useState('login')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [signupOk, setSignupOk] = useState(false)
 
   if (user) {
     return (
@@ -42,15 +43,30 @@ function LoginWidget() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setSignupOk(false)
     setBusy(true)
     try {
       if (mode === 'login') {
         await signIn(email, password)
       } else {
-        await signUp(email, password)
+        const result = await signUp(email, password)
+        if (result?.needsEmailConfirmation) {
+          setSignupOk(true)
+        }
       }
     } catch (err) {
-      setError(err.message || '操作失败')
+      const msg = err.message || ''
+      if (msg.includes('Email not confirmed')) {
+        setError('邮箱未验证，请先查收验证邮件')
+      } else if (msg.includes('Invalid login credentials')) {
+        setError('邮箱或密码错误')
+      } else if (msg.includes('User already registered')) {
+        setError('该邮箱已注册，请直接登录')
+      } else if (msg.includes('Unable to validate email')) {
+        setError('邮箱格式无效')
+      } else {
+        setError(msg.slice(0, 120) || '操作失败')
+      }
     } finally {
       setBusy(false)
     }
@@ -61,42 +77,48 @@ function LoginWidget() {
       <p className="text-xs text-gray-400 mb-3">
         ☁️ 登录以开启云端跨设备同步
       </p>
-      <form onSubmit={handleSubmit} className="space-y-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="邮箱"
-          required
-          className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-gray-400 transition-colors"
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="密码"
-          required
-          className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-gray-400 transition-colors"
-        />
-        {error && <p className="text-xs text-red-500">{error}</p>}
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={busy}
-            className="flex-1 flex items-center justify-center gap-1 text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
-          >
-            <LogIn size={12} />
-            {busy ? '...' : mode === 'login' ? '登录' : '注册'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-            className="text-xs text-gray-400 hover:text-gray-600 px-2 transition-colors"
-          >
-            {mode === 'login' ? '注册' : '登录'}
-          </button>
+      {signupOk ? (
+        <div className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+          注册成功！验证邮件已发送到 {email}，请查收并点击确认，然后返回登录。
         </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="邮箱"
+            required
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-gray-400 transition-colors"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="密码"
+            required
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-gray-400 transition-colors"
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex-1 flex items-center justify-center gap-1 text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            >
+              <LogIn size={12} />
+              {busy ? '...' : mode === 'login' ? '登录' : '注册'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setSignupOk(false) }}
+              className="text-xs text-gray-400 hover:text-gray-600 px-2 transition-colors"
+            >
+              {mode === 'login' ? '注册' : '登录'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }

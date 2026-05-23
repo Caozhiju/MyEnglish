@@ -16,15 +16,20 @@ create policy "用户可以读取自己的进度"
   on user_progress for select
   using (auth.uid() = user_id);
 
-create policy "用户可以插入/更新自己的进度"
-  on user_progress for upsert
+create policy "用户可以插入自己的进度"
+  on user_progress for insert
+  with check (auth.uid() = user_id);
+
+create policy "用户可以更新自己的进度"
+  on user_progress for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 */
 
-import { supabase } from '../supabaseClient'
+import { supabase, isSupabaseConfigured } from '../supabaseClient'
 
 export async function fetchUserProgress(userId) {
+  if (!isSupabaseConfigured()) return {}
   const { data, error } = await supabase
     .from('user_progress')
     .select('learning_queue, ignore_word_pool')
@@ -35,6 +40,7 @@ export async function fetchUserProgress(userId) {
 }
 
 export async function upsertUserProgress(userId, updates) {
+  if (!isSupabaseConfigured()) return
   const payload = {
     user_id: userId,
     updated_at: new Date().toISOString(),

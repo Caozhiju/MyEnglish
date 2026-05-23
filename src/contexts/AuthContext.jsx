@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from '../supabaseClient'
+import { supabase, isSupabaseConfigured } from '../supabaseClient'
 
 const AuthContext = createContext(null)
 
@@ -8,8 +8,13 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
+    }).catch(() => {}).finally(() => {
       setLoading(false)
     })
 
@@ -28,8 +33,10 @@ export function AuthProvider({ children }) {
   }
 
   const signUp = async (email, password) => {
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
+    // Return whether user needs email confirmation
+    return { needsEmailConfirmation: !data.session }
   }
 
   const signOut = async () => {
