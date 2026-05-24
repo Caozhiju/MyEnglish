@@ -87,6 +87,7 @@ export default function Vocab() {
   const [configOpen, setConfigOpen] = useState(false)
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [sessionCompleted, setSessionCompleted] = useState(0)
+  const [isTransitioning, setIsTransitioning] = useState(false)
 
   /* config modal draft state */
   const [draftSource, setDraftSource] = useState(configSource)
@@ -99,6 +100,7 @@ export default function Vocab() {
   const [spellingInput, setSpellingInput] = useState('')
   const [spellingWrong, setSpellingWrong] = useState(false)
   const spellingRef = useRef(null)
+  const transitioningRef = useRef(false)
 
   /* AI modal */
   const [mockExamples, setMockExamples] = useState([])
@@ -142,9 +144,6 @@ export default function Vocab() {
   }, [learningQueue, currentSession.dailyQueue, favoritesOnly])
 
   const current = effectiveQueue[0] ?? null
-  const dueIndex = current
-    ? learningQueue.findIndex((it) => it.id === current.id)
-    : -1
 
   const totalProgress = sessionCompleted + effectiveQueue.length
   const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
@@ -266,52 +265,47 @@ export default function Vocab() {
   /* ── spaced repetition ── */
 
   function advanceCard(asLevel) {
-    if (!current || dueIndex === -1) return
-    
-    const updated = [...learningQueue]
-    const item = { ...updated[dueIndex] }
-    
-    /* 更新原 learningQueue 中的算法状态 */
-    item.level = asLevel
-    if (asLevel === 1) {
-      item.nextReviewDate = startOfDayISO(3)
-    } else if (asLevel === 2) {
-      item.nextReviewDate = startOfDayISO(1)
-    } else if (asLevel === 3) {
-      /* 忘记：降级处理 */
-      item.nextReviewDate = startOfDayISO(0)
-    }
-    updated[dueIndex] = item
-    setLearningQueue(updated)
-    
-    /* ── 核心改动：处理 currentSession.dailyQueue ── */
-    const currentIndex = currentSession.dailyQueue.findIndex((it) => it.id === current.id)
-    if (currentIndex !== -1) {
-      const newDailyQueue = [...currentSession.dailyQueue]
-      
-      if (asLevel === 3) {
-        /* 【忘记】：将词移到队尾而不是删除 */
-        const word = newDailyQueue.splice(currentIndex, 1)[0]
-        newDailyQueue.push(word)
-        console.log(`[打分] 单词 "${current.word}" 标记为【忘记】，移到队尾 | 剩余队列长度: ${newDailyQueue.length}`)
-      } else {
-        /* 【认识】或【模糊】：从队列中移除 */
-        newDailyQueue.splice(currentIndex, 1)
-        console.log(`[打分] 单词 "${current.word}" 标记为【${asLevel === 1 ? '认识' : '模糊'}】，从队列移除 | 剩余队列长度: ${newDailyQueue.length}`)
+    if (!current || transitioningRef.current) return
+    transitioningRef.current = true
+    setIsTransitioning(true)
+
+    const currentId = current.id
+
+    setLearningQueue(prev => {
+      const idx = prev.findIndex(it => it.id === currentId)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next[idx] = {
+        ...next[idx],
+        level: asLevel,
+        nextReviewDate: asLevel === 1 ? startOfDayISO(3) : asLevel === 2 ? startOfDayISO(1) : startOfDayISO(0),
       }
-      
-      /* 立即同步更新 currentSession */
-      setCurrentSession({
-        ...currentSession,
-        dailyQueue: newDailyQueue,
-      })
-    }
-    
+      return next
+    })
+
+    setCurrentSession(prev => {
+      const qIdx = prev.dailyQueue.findIndex(it => it.id === currentId)
+      if (qIdx === -1) return prev
+      const dq = [...prev.dailyQueue]
+      if (asLevel === 3) {
+        const word = dq.splice(qIdx, 1)[0]
+        dq.push(word)
+      } else {
+        dq.splice(qIdx, 1)
+      }
+      return { ...prev, dailyQueue: dq }
+    })
+
     setRevealed(false)
     setSpellingMode(false)
     setSpellingInput('')
     setSpellingWrong(false)
-    setSessionCompleted((c) => c + 1)
+    setSessionCompleted(c => c + 1)
+
+    setTimeout(() => {
+      transitioningRef.current = false
+      setIsTransitioning(false)
+    }, 300)
   }
 
   /* ── spelling ── */
@@ -352,30 +346,19 @@ export default function Vocab() {
   /* ── favorites ── */
 
   function toggleFavorite() {
-    if (!current || dueIndex === -1) return
-    const updated = [...learningQueue]
-    updated[dueIndex] = { ...updated[dueIndex], isFavorite: !updated[dueIndex].isFavorite }
-    setLearningQueue(updated)
-    const favCount = updated.filter(
-      (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-    ).length
-    console.log(
-      `[收藏] 单词 "${current.word}" 收藏状态: ${updated[dueIndex].isFavorite ? '★ 已收藏' : '☆ 已取消'} | 收藏室总数: ${favCount}`
+    if (!current) return
+    setLearningQueue(prev =>
+      prev.map(it =>
+        it.id === current.id ? { ...it, isFavorite: !it.isFavorite } : it
+      )
     )
   }
 
   function toggleFavoriteById(itemId) {
-    const idx = learningQueue.findIndex((it) => it.id === itemId)
-    if (idx === -1) return
-    const updated = [...learningQueue]
-    const item = updated[idx]
-    updated[idx] = { ...item, isFavorite: !item.isFavorite }
-    setLearningQueue(updated)
-    const favCount = updated.filter(
-      (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-    ).length
-    console.log(
-      `[收藏] 单词 "${item.word}" 收藏状态: ${updated[idx].isFavorite ? '★ 已收藏' : '☆ 已取消'} | 收藏室总数: ${favCount}`
+    setLearningQueue(prev =>
+      prev.map(it =>
+        it.id === itemId ? { ...it, isFavorite: !it.isFavorite } : it
+      )
     )
   }
 
@@ -421,37 +404,26 @@ export default function Vocab() {
   }
 
   function toggleSaveSentence(sentence) {
-    if (!current || dueIndex === -1) return
-    const updated = [...learningQueue]
-    const item = { ...updated[dueIndex] }
-    const saved = item.savedSentences || []
-
-    const exists = saved.some((s) => s.en === sentence.en && s.cn === sentence.cn)
-    item.savedSentences = exists
-      ? saved.filter((s) => !(s.en === sentence.en && s.cn === sentence.cn))
+    if (!current) return
+    const saved = current.savedSentences || []
+    const exists = saved.some(s => s.en === sentence.en && s.cn === sentence.cn)
+    const newSentenceList = exists
+      ? saved.filter(s => !(s.en === sentence.en && s.cn === sentence.cn))
       : [...saved, sentence]
 
-    updated[dueIndex] = item
-    setLearningQueue(updated)
+    setLearningQueue(prev =>
+      prev.map(it =>
+        it.id === current.id ? { ...it, savedSentences: newSentenceList } : it
+      )
+    )
 
-    const poolUpdated = globalWordPool.map((w) => {
-      const n = normalizeEntry(w)
-      if (n.word === current.word) {
-        const base = typeof w === 'string' ? { word: w, translations: [], phrases: [] } : { ...w }
-        return { ...base, savedSentences: item.savedSentences }
-      }
-      return w
-    })
-    setGlobalWordPool(poolUpdated)
-
-    const favCount = updated.filter(
-      (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-    ).length
-    console.log(
-      `[收藏] 单词 "${current.word}" 例句${exists ? '取消' : '已'}收藏 (共 ${item.savedSentences.length} 句) | 收藏室总数: ${favCount} | localStorage:`,
-      JSON.parse(localStorage.getItem('learningQueue') || '[]').filter(
-        (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-      ).length
+    setGlobalWordPool(prev =>
+      prev.map(w => {
+        const n = normalizeEntry(w)
+        return n.word === current.word
+          ? { ...(typeof w === 'string' ? { word: w, translations: [], phrases: [] } : { ...w }), savedSentences: newSentenceList }
+          : w
+      })
     )
   }
 
@@ -697,19 +669,22 @@ export default function Vocab() {
                   <div className="flex gap-2 justify-center mb-4">
                     <button
                       onClick={handleKnow}
-                      className="px-5 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-medium"
+                      disabled={isTransitioning}
+                      className="px-5 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50"
                     >
                       认识
                     </button>
                     <button
                       onClick={handleFuzzy}
-                      className="px-5 py-2 bg-amber-400 text-white rounded-lg hover:bg-amber-500 transition-colors text-sm font-medium"
+                      disabled={isTransitioning}
+                      className="px-5 py-2 bg-amber-400 text-white rounded-lg hover:bg-amber-500 transition-colors text-sm font-medium disabled:opacity-50"
                     >
                       模糊
                     </button>
                     <button
                       onClick={handleForgot}
-                      className="px-5 py-2 bg-red-400 text-white rounded-lg hover:bg-red-500 transition-colors text-sm font-medium"
+                      disabled={isTransitioning}
+                      className="px-5 py-2 bg-red-400 text-white rounded-lg hover:bg-red-500 transition-colors text-sm font-medium disabled:opacity-50"
                     >
                       忘记
                     </button>
