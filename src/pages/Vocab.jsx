@@ -87,7 +87,6 @@ export default function Vocab() {
   const [configOpen, setConfigOpen] = useState(false)
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [sessionCompleted, setSessionCompleted] = useState(0)
-  const [currentIndex, setCurrentIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   /* config modal draft state */
@@ -123,26 +122,29 @@ export default function Vocab() {
     if (currentSession.date !== today) {
       setCurrentSession({ dailyQueue: [], date: today })
       setSessionCompleted(0)
-      setCurrentIndex(0)
     }
   }, [])
 
-  const activeQueue = currentSession.dailyQueue.length > 0 ? currentSession.dailyQueue : learningQueue
-
-  const current = activeQueue[currentIndex] ?? null
-
-  const totalProgress = activeQueue.length
-  const progressPct = totalProgress > 0 ? Math.round((currentIndex / totalProgress) * 100) : 0
-
-  const isSessionComplete = totalProgress > 0 && currentIndex >= totalProgress
-
-  // 收藏室列表 filter (only used in favorites mode)
   const effectiveQueue = useMemo(() => {
-    const q = currentSession.dailyQueue.length > 0 ? currentSession.dailyQueue : learningQueue
-    return q.filter(
-      (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-    )
-  }, [learningQueue, currentSession.dailyQueue])
+    const queue = currentSession.dailyQueue.length > 0 ? currentSession.dailyQueue : learningQueue
+    if (favoritesOnly) {
+      return queue.filter(
+        (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
+      )
+    }
+    return queue.filter((it) => {
+      try {
+        return new Date(it.nextReviewDate) <= new Date()
+      } catch (e) {
+        return true
+      }
+    })
+  }, [learningQueue, currentSession.dailyQueue, favoritesOnly])
+
+  const current = effectiveQueue[0] ?? null
+
+  const totalProgress = sessionCompleted + effectiveQueue.length
+  const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
 
   // reset card state when current card changes
   useEffect(() => {
@@ -249,7 +251,6 @@ export default function Vocab() {
         date: nowISO,
       })
       setSessionCompleted(0)
-      setCurrentIndex(0)
       setFeedbackMsg(`已添加 ${items.length} 个新词`)
     } catch (e) {
       console.error(e)
@@ -280,15 +281,17 @@ export default function Vocab() {
       return next
     })
 
-    if (currentSession.dailyQueue.length > 0 && asLevel === 3) {
-      setCurrentSession(prev => {
-        const dq = [...prev.dailyQueue]
-        dq.push({ ...dq[currentIndex] })
-        return { ...prev, dailyQueue: dq }
-      })
-    }
+    setCurrentSession(prev => {
+      const dq = [...prev.dailyQueue]
+      const qIdx = dq.findIndex(it => it.id === currentId)
+      if (qIdx === -1) return { ...prev, dailyQueue: dq }
+      if (asLevel === 3) {
+        dq.push({ ...dq[qIdx] })
+      }
+      dq.splice(qIdx, 1)
+      return { ...prev, dailyQueue: dq }
+    })
 
-    setCurrentIndex(prev => prev + 1)
     setRevealed(false)
     setSpellingMode(false)
     setSpellingInput('')
@@ -371,7 +374,6 @@ export default function Vocab() {
     setLearningQueue([])
     setCurrentSession({ dailyQueue: [], date: startOfDayISO(0) })
     setSessionCompleted(0)
-    setCurrentIndex(0)
     setLoadError('')
   }
 
@@ -439,7 +441,7 @@ export default function Vocab() {
           {/* Favorites toggle */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
             <button
-              onClick={() => { setFavoritesOnly(false) }}
+              onClick={() => { setFavoritesOnly(false); setSessionCompleted(0) }}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 favoritesOnly ? 'bg-white text-gray-500' : 'bg-gray-900 text-white'
               }`}
@@ -447,7 +449,7 @@ export default function Vocab() {
               全部
             </button>
             <button
-              onClick={() => { setFavoritesOnly(true) }}
+              onClick={() => { setFavoritesOnly(true); setSessionCompleted(0) }}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 favoritesOnly ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
               }`}
@@ -700,7 +702,7 @@ export default function Vocab() {
           {!loading && !current && !loadError && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex items-center justify-center text-center">
               <div>
-                {isSessionComplete ? (
+                {currentSession.dailyQueue.length === 0 && sessionCompleted > 0 ? (
                   <>
                     <p className="text-4xl mb-4">✅</p>
                     <p className="text-gray-700 text-lg font-medium mb-2">今日任务已完成</p>
@@ -717,7 +719,7 @@ export default function Vocab() {
                 ) : (
                   <>
                     <p className="text-gray-400 text-sm mb-4">
-                      {activeQueue.length === 0
+                      {learningQueue.length === 0
                         ? '队列为空，点击「学习配置」选择词库并开始学习。'
                         : '当前没有需要复习的词，休息一下或添加新词。'}
                     </p>
@@ -845,7 +847,7 @@ export default function Vocab() {
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
             <span>学习进度</span>
             <span>
-              {currentIndex} / {totalProgress}
+              {sessionCompleted} / {totalProgress}
             </span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
