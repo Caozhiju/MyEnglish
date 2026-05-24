@@ -271,29 +271,27 @@ export default function Vocab() {
     transitioningRef.current = true
     setIsTransitioning(true)
 
-    const currentId = current.id
+    const currentWord = current
     const nextReviewDate = asLevel === 1 ? startOfDayISO(3) : asLevel === 2 ? startOfDayISO(1) : startOfDayISO(0)
 
     setLearningQueue(prev => {
-      const idx = prev.findIndex(it => it.id === currentId)
+      const idx = prev.findIndex(it => it.id === currentWord.id)
       if (idx === -1) return prev
-      const next = [...prev]
-      next[idx] = { ...next[idx], level: asLevel, nextReviewDate }
+      const before = prev.slice(0, idx)
+      const after = prev.slice(idx + 1)
+      const updated = { ...prev[idx], level: asLevel, nextReviewDate }
       if (asLevel === 3) {
-        next.push({ ...next[idx] })
+        return [...before, updated, ...after, { ...updated }]
       }
-      return next
+      return [...before, updated, ...after]
     })
 
     setCurrentSession(prev => {
-      const dq = [...prev.dailyQueue]
-      const qIdx = dq.findIndex(it => it.id === currentId)
-      if (qIdx === -1) return { ...prev, dailyQueue: dq }
+      const remaining = prev.dailyQueue.slice(1)
       if (asLevel === 3) {
-        dq.push({ ...dq[qIdx] })
+        return { ...prev, dailyQueue: [...remaining, { ...currentWord }] }
       }
-      dq.splice(qIdx, 1)
-      return { ...prev, dailyQueue: dq }
+      return { ...prev, dailyQueue: remaining }
     })
 
     setCurrentIndex(0)
