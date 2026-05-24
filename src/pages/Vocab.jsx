@@ -281,7 +281,7 @@ export default function Vocab() {
       const after = prev.slice(idx + 1)
       const updated = { ...prev[idx], level: asLevel, nextReviewDate }
       if (asLevel === 3) {
-        return [...before, updated, ...after, { ...updated }]
+        return [...before, updated, ...after, { ...updated, level: 0 }]
       }
       return [...before, updated, ...after]
     })
@@ -289,7 +289,8 @@ export default function Vocab() {
     setCurrentSession(prev => {
       const remaining = prev.dailyQueue.slice(1)
       if (asLevel === 3) {
-        return { ...prev, dailyQueue: [...remaining, { ...currentWord }] }
+        const reQueuedWord = { ...currentWord, level: 0 }
+        return { ...prev, dailyQueue: [...remaining, reQueuedWord] }
       }
       return { ...prev, dailyQueue: remaining }
     })
