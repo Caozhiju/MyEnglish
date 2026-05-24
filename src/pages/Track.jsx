@@ -1,71 +1,165 @@
 import React, { useMemo } from 'react'
-import { useStorage } from '../hooks/useStorage'
+import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import { useSyncStorage } from '../hooks/useSyncStorage'
 
-function ActivityMatrix({ days = 30 }) {
-  // generate last N days with random score 0-4
-  const data = useMemo(() => {
-    const arr = []
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      arr.push({ date: d, score: Math.floor(Math.random() * 5) })
-    }
-    return arr
-  }, [days])
-
-  const colorFor = (score) => {
-    switch (score) {
-      case 0:
-        return 'bg-gray-100'
-      case 1:
-        return 'bg-green-200'
-      case 2:
-        return 'bg-green-400'
-      case 3:
-        return 'bg-green-600'
-      case 4:
-        return 'bg-green-800'
-      default:
-        return 'bg-gray-100'
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1">
-      {data.map((d, idx) => (
-        <div key={idx} title={d.date.toLocaleDateString() + ' — ' + d.score} className={`${colorFor(d.score)} w-6 h-6 rounded-sm`} />
-      ))}
-    </div>
-  )
+function maskEmail(email) {
+  if (!email) return ''
+  const [name, domain] = email.split('@')
+  if (!domain) return email
+  const visible = name.slice(0, 4)
+  return `${visible}${'*'.repeat(Math.max(0, name.length - 4))}@${domain}`
 }
 
-export default function Track(){
-  const [learningQueue] = useStorage('learningQueue', [])
+export default function Track() {
+  const { user, signOut } = useAuth()
+  const [learningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
+  const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
 
-  const masteredCount = useMemo(() => {
-    return (learningQueue || []).filter((it) => (it.level || 0) >= 1).length
+  const totalWords = learningQueue?.length || 0
+  const totalIgnored = ignoreWordPool?.length || 0
+
+  const dueCount = useMemo(() => {
+    if (!learningQueue || learningQueue.length === 0) return 0
+    const now = Date.now()
+    return learningQueue.filter((it) => {
+      if (it.level === 2 || it.level === 3) return true
+      if (it.nextReviewDate) {
+        try {
+          return new Date(it.nextReviewDate).getTime() <= now
+        } catch {
+          return false
+        }
+      }
+      return false
+    }).length
   }, [learningQueue])
 
-  const streak = 12 // mock
+  const recentWords = useMemo(() => {
+    if (!learningQueue || learningQueue.length === 0) return []
+    return [...learningQueue].reverse().slice(0, 8)
+  }, [learningQueue])
 
   return (
-    <div>
-      <h2 className="text-lg font-semibold mb-4">Track</h2>
+    <div className="max-w-4xl mx-auto pb-8">
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">Track</h2>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-white p-6 rounded shadow text-center">
-          <div className="text-xs text-gray-500">连续打卡天数</div>
-          <div className="text-3xl font-bold mt-2">{streak} 天</div>
+      {/* ── Account & Sync Status ── */}
+      <div className="mb-8">
+        {user ? (
+          <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center">
+                <Cloud size={20} className="text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">{maskEmail(user.email)}</p>
+                <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                  ☁️ 云端实时同步中
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={signOut}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <LogOut size={13} />
+              退出登录
+            </button>
+          </div>
+        ) : (
+          <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <CloudOff size={20} className="text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-900">当前为本地离线模式</p>
+                <p className="text-xs text-gray-500 mt-0.5">数据仅保存在当前设备，切换设备或清除浏览器数据可能丢失</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Stats Cards ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <BookOpen size={18} className="text-indigo-500" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">生词库总储量</span>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{totalWords}</p>
+          <p className="text-xs text-gray-400 mt-1">已收录至学习队列</p>
         </div>
-        <div className="bg-white p-6 rounded shadow text-center">
-          <div className="text-xs text-gray-500">累计掌握词汇</div>
-          <div className="text-3xl font-bold mt-2">{masteredCount}</div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Filter size={18} className="text-amber-500" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">已排除噪音词汇</span>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{totalIgnored}</p>
+          <p className="text-xs text-gray-400 mt-1">已过滤的无用词汇</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <RefreshCw size={18} className="text-emerald-500" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">待复习词汇</span>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{dueCount}</p>
+          <p className="text-xs text-gray-400 mt-1">需要今天复习</p>
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded shadow">
-        <div className="mb-3 text-sm text-gray-600">最近 30 天活跃度</div>
-        <ActivityMatrix days={30} />
+      {/* ── Recent Activity ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h3 className="text-sm font-semibold text-gray-900 mb-5 flex items-center gap-2">
+          <RefreshCw size={15} className="text-gray-400" />
+          最新捕获轨迹
+        </h3>
+
+        {recentWords.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-300 text-4xl mb-3">📭</p>
+            <p className="text-sm text-gray-400">还没有捕获任何生词</p>
+            <p className="text-xs text-gray-300 mt-1">去 Read 页面阅读文章并收藏词汇吧</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {recentWords.map((item) => (
+              <div key={item.id} className="flex items-start gap-4 pb-4 border-b border-gray-50 last:border-b-0 last:pb-0">
+                <div className="flex-shrink-0 w-24 pt-0.5">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{item.word}</p>
+                </div>
+                <div className="flex-1 min-w-0">
+                  {item.sourceSentence ? (
+                    <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+                      "{item.sourceSentence}"
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-300 italic">无上下文记录</p>
+                  )}
+                  {item.translations && item.translations.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {item.translations.slice(0, 2).map((t) => t.translation || t).join(' · ')}
+                    </p>
+                  )}
+                </div>
+                <div className="flex-shrink-0 text-gray-300">
+                  <ChevronRight size={14} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
