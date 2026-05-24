@@ -87,6 +87,8 @@ export default function Vocab() {
   const [configOpen, setConfigOpen] = useState(false)
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [sessionCompleted, setSessionCompleted] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [renderKey, setRenderKey] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   /* config modal draft state */
@@ -141,7 +143,7 @@ export default function Vocab() {
     })
   }, [learningQueue, currentSession.dailyQueue, favoritesOnly])
 
-  const current = effectiveQueue[0] ?? null
+  const current = effectiveQueue[currentIndex] ?? null
 
   const totalProgress = sessionCompleted + effectiveQueue.length
   const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
@@ -251,6 +253,8 @@ export default function Vocab() {
         date: nowISO,
       })
       setSessionCompleted(0)
+      setCurrentIndex(0)
+      setRenderKey(prev => prev + 1)
       setFeedbackMsg(`已添加 ${items.length} 个新词`)
     } catch (e) {
       console.error(e)
@@ -292,6 +296,8 @@ export default function Vocab() {
       return { ...prev, dailyQueue: dq }
     })
 
+    setCurrentIndex(0)
+    setRenderKey(prev => prev + 1)
     setRevealed(false)
     setSpellingMode(false)
     setSpellingInput('')
@@ -374,6 +380,8 @@ export default function Vocab() {
     setLearningQueue([])
     setCurrentSession({ dailyQueue: [], date: startOfDayISO(0) })
     setSessionCompleted(0)
+    setCurrentIndex(0)
+    setRenderKey(prev => prev + 1)
     setLoadError('')
   }
 
@@ -522,7 +530,7 @@ export default function Vocab() {
 
           {/* Card */}
           {!loading && current && (
-            <div className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex flex-col items-center justify-center text-center">
+            <div key={renderKey} className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex flex-col items-center justify-center text-center">
               {/* Favorite star */}
               <button
                 onClick={toggleFavorite}
