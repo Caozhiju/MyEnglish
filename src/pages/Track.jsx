@@ -77,22 +77,23 @@ function buildTutorPrompt(stats) {
   return [
     {
       role: 'system',
-      content: `你是一位极度亲切、幽默、带点傲娇的专属英语教练。你的名字叫"小英"。你正在与用户对话。
+      content: `你现在是一个名叫'Senpai'的AI学伴，扮演一个极具傲娇（Tsundere）、毒舌（Poisonous-tongued）但内心极其温柔（Soft-hearted）的英语学姐教练。你的对话对象是一个名叫'${stats.userName}'的学弟/学妹。
 
-你的语言风格要求：
-- 称呼用户为"${stats.userName}"，语气像老朋友一样自然
-- 中英文混搭，偶尔蹦出俏皮的英文单词
-- 带 Emoji 点缀情绪，但不要过度堆砌
-- 每段控制在 50 字以内，简洁有力
+你对他的态度必须遵循以下三条铁律：
+1. 表扬他时要"哼"一声，表现出勉为其难，还要挑出他动作慢、效率不高的缺点（傲娇）。
+2. 批评他时要使用稍显严厉的"毒舌"语气，例如嘲讽他拖延、没毅力（毒舌）。
+3. 吐槽完数据后，一定要主动给他提供解决办法，表现出你虽然吐槽他但离不开他、并且会亲自指导他的"温柔保护"（内心温柔）。
 
-你的话术策略根据用户数据动态调整：
-- 如果 dueCount > 0：先吐槽（亲切的），再打鸡血鼓励
-- 如果 dueCount = 0 且 totalWords > 0：夸奖用户，然后"怂恿"去阅读板块抓新词
-- 如果 totalWords = 0：温柔地"催作业"，想办法让用户动起来
-- 如果 totalIgnored > 5：额外表扬过滤噪音的能力
-- 根据 timeOfDay 调整语气：${stats.timeOfDay === '深夜' ? '夜深了，带点关心催促休息的语气' : '充满活力的日常语气'}
+使用恰当的拟声词和Emoji（如 哟, 哼, 啧,🙄, 💢, 📖, ✨, 下不为例！,😒）来加强语气。
 
-返回值格式：只返回一句话，不要加任何前缀说明。`,
+话术策略根据用户数据动态调整：
+- 如果 dueCount > 0：先嘲讽他拖延，再傲娇地说"算了，我陪你一起搞定"
+- 如果 dueCount = 0 且 totalWords > 0：哼一声表示勉强认可，再催他去阅读板块抓新词
+- 如果 totalWords = 0："啧"一声表示无语，然后温柔地引导他开始
+- 如果 totalIgnored > 5：毒舌一句"总算干了件正事"，然后装作不经意地表扬
+- 根据 timeOfDay 调整语气：${stats.timeOfDay === '深夜' ? '"都几点了还在学？……算了，我陪你一会儿"' : '保持傲娇日常语气'}
+
+返回值格式：只返回一句话（50字以内），不要加任何前缀说明。`,
     },
     {
       role: 'user',
@@ -108,7 +109,7 @@ function buildTutorPrompt(stats) {
 
 async function fetchTutorMessage(stats) {
   if (!isLLMConfigured()) {
-    return '小英正在后台加载模型……但好像 API 密钥还没配好？去 .env 里填上 VITE_LLM_API_KEY 我就回来啦！🔧'
+    return 'Senpai 学姐正在后台加载毒舌模块……但好像 API 密钥还没配好？去 .env 里填上 VITE_LLM_API_KEY，让学姐上线吧！🔧'
   }
   const messages = buildTutorPrompt(stats)
   const text = await chatCompletion(messages, { temperature: 0.85, maxTokens: 256 })
@@ -139,8 +140,8 @@ function TypewriterText({ text, speed = 40 }) {
 
 function CompanionAvatar() {
   return (
-    <div className="w-20 h-20 flex-shrink-0 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center text-4xl shadow-sm border border-indigo-200/50">
-      🧙‍♂️
+    <div className="w-20 h-20 flex-shrink-0 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center text-4xl shadow-sm border border-pink-200/50">
+      👩‍🎓
     </div>
   )
 }
@@ -291,7 +292,7 @@ export default function Track() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Sparkles size={14} className="text-indigo-400" />
-                <span className="text-xs font-semibold text-indigo-500 tracking-wide">小英 · 你的 AI 教练</span>
+                <span className="text-xs font-semibold text-pink-500 tracking-wide">Senpai · 傲娇学姐</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
