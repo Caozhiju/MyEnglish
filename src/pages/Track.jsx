@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react'
-import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight, X, Sparkles } from 'lucide-react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight, X, Sparkles, Settings, RotateCw } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSyncStorage } from '../hooks/useSyncStorage'
+import { useStorage } from '../hooks/useStorage'
+import { chatCompletion, isLLMConfigured } from '../services/llmService'
 
 function maskEmail(email) {
   if (!email) return ''
@@ -33,7 +35,6 @@ function renderModalContent(list, emptyText) {
       </div>
     )
   }
-
   return (
     <div className="divide-y divide-gray-50">
       {list.map((item) => (
@@ -50,51 +51,97 @@ function renderModalContent(list, emptyText) {
   )
 }
 
-function generateTutorMessage(userName, totalWords, totalIgnored, dueCount) {
-  let summary = ''
-  let encouragement = ''
+const DEFAULT_TARGETS = { targetNew: 20, targetReview: 30 }
 
-  if (totalIgnored > 0) {
-    summary = `哇，${userName}，你已经排除了 ${totalIgnored} 个噪音词！这极大地清空了学习干扰！👏`
-  } else if (totalWords > 0) {
-    summary = `${userName}，你的词库共收录了 ${totalWords} 个生词，每次积累都在为流利铺路！📚`
-  } else {
-    summary = `嗨 ${userName}，你的专属学习空间已经准备好了，来捕获第一个生词吧！✨`
+function gatherTodayStats(userName, totalWords, totalIgnored, dueCount, targets) {
+  const hour = new Date().getHours()
+  let timeOfDay = '早上'
+  if (hour >= 6 && hour < 12) timeOfDay = '早上'
+  else if (hour >= 12 && hour < 14) timeOfDay = '中午'
+  else if (hour >= 14 && hour < 18) timeOfDay = '下午'
+  else if (hour >= 18 && hour < 22) timeOfDay = '晚上'
+  else timeOfDay = '深夜'
+
+  return {
+    userName,
+    totalWords,
+    totalIgnored,
+    dueCount,
+    targetNew: targets.targetNew,
+    targetReview: targets.targetReview,
+    timeOfDay,
   }
-
-  if (dueCount > 0) {
-    encouragement = `你今天还有 ${dueCount} 个词需要复习，咱们加油把它们都攻克了吧！💪`
-  } else if (totalWords > 0) {
-    encouragement = `今天的复习池是空的，不如去阅读板块捕获一些新的词汇？📖✨`
-  } else {
-    encouragement = `快去阅读板块开始第一轮捕获吧，每一个生词都是通往流利的阶梯！🚀`
-  }
-
-  return { summary, encouragement }
 }
 
-function CompanionCharacter() {
+function buildTutorPrompt(stats) {
+  return [
+    {
+      role: 'system',
+      content: `你是一位极度亲切、幽默、带点傲娇的专属英语教练。你的名字叫"小英"。你正在与用户对话。
+
+你的语言风格要求：
+- 称呼用户为"${stats.userName}"，语气像老朋友一样自然
+- 中英文混搭，偶尔蹦出俏皮的英文单词
+- 带 Emoji 点缀情绪，但不要过度堆砌
+- 每段控制在 50 字以内，简洁有力
+
+你的话术策略根据用户数据动态调整：
+- 如果 dueCount > 0：先吐槽（亲切的），再打鸡血鼓励
+- 如果 dueCount = 0 且 totalWords > 0：夸奖用户，然后"怂恿"去阅读板块抓新词
+- 如果 totalWords = 0：温柔地"催作业"，想办法让用户动起来
+- 如果 totalIgnored > 5：额外表扬过滤噪音的能力
+- 根据 timeOfDay 调整语气：${stats.timeOfDay === '深夜' ? '夜深了，带点关心催促休息的语气' : '充满活力的日常语气'}
+
+返回值格式：只返回一句话，不要加任何前缀说明。`,
+    },
+    {
+      role: 'user',
+      content: `以下是 ${stats.userName} 今天的实时学习数据，请根据这些数据给我一句教练点评（50字以内，带Emoji）：
+- 词库总词汇量：${stats.totalWords}
+- 已排除噪音数：${stats.totalIgnored}
+- 待复习数：${stats.dueCount}
+- 今日目标 - 新词：${stats.targetNew}，复习：${stats.targetReview}
+- 当前时段：${stats.timeOfDay}`,
+    },
+  ]
+}
+
+async function fetchTutorMessage(stats) {
+  if (!isLLMConfigured()) {
+    return '小英正在后台加载模型……但好像 API 密钥还没配好？去 .env 里填上 VITE_LLM_API_KEY 我就回来啦！🔧'
+  }
+  const messages = buildTutorPrompt(stats)
+  const text = await chatCompletion(messages, { temperature: 0.85, maxTokens: 256 })
+  return text.trim()
+}
+
+function TypewriterText({ text, speed = 40 }) {
+  const [displayed, setDisplayed] = useState('')
+  const indexRef = useRef(0)
+
+  useEffect(() => {
+    setDisplayed('')
+    indexRef.current = 0
+    if (!text) return
+    const timer = setInterval(() => {
+      if (indexRef.current < text.length) {
+        setDisplayed(text.slice(0, indexRef.current + 1))
+        indexRef.current++
+      } else {
+        clearInterval(timer)
+      }
+    }, speed)
+    return () => clearInterval(timer)
+  }, [text, speed])
+
+  return <span>{displayed}</span>
+}
+
+function CompanionAvatar() {
   return (
-    <svg viewBox="0 0 80 96" className="w-20 h-24 flex-shrink-0" fill="none">
-      <ellipse cx="40" cy="92" rx="22" ry="4" fill="#F1F5F9" />
-      <ellipse cx="28" cy="85" rx="7" ry="3.5" fill="#FED7AA" />
-      <ellipse cx="52" cy="85" rx="7" ry="3.5" fill="#FED7AA" />
-      <ellipse cx="40" cy="62" rx="22" ry="25" fill="#E0E7FF" />
-      <ellipse cx="40" cy="69" rx="13" ry="13" fill="#FFF" />
-      <circle cx="40" cy="30" r="21" fill="#E0E7FF" />
-      <circle cx="33" cy="27" r="6.5" fill="#FFF" />
-      <circle cx="47" cy="27" r="6.5" fill="#FFF" />
-      <circle cx="35" cy="27" r="3" fill="#1E293B" />
-      <circle cx="49" cy="27" r="3" fill="#1E293B" />
-      <circle cx="36.5" cy="25.5" r="1.2" fill="#FFF" />
-      <circle cx="50.5" cy="25.5" r="1.2" fill="#FFF" />
-      <ellipse cx="28" cy="35" rx="3.5" ry="2" fill="#FECDD3" opacity="0.6" />
-      <ellipse cx="52" cy="35" rx="3.5" ry="2" fill="#FECDD3" opacity="0.6" />
-      <path d="M37 40 L43 40 L40 44 Z" fill="#F59E0B" />
-      <rect x="22" y="10" width="36" height="4" rx="2" fill="#6366F1" />
-      <rect x="36" y="6" width="8" height="4" rx="2" fill="#6366F1" />
-      <circle cx="57" cy="12" r="3" fill="#F59E0B" />
-    </svg>
+    <div className="w-20 h-20 flex-shrink-0 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center text-4xl shadow-sm border border-indigo-200/50">
+      🧙‍♂️
+    </div>
   )
 }
 
@@ -102,7 +149,15 @@ export default function Track() {
   const { user, signOut } = useAuth()
   const [learningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
+  const [targets, setTargets] = useStorage('tutorTargets', DEFAULT_TARGETS)
   const [activeModal, setActiveModal] = useState(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [draftTargets, setDraftTargets] = useState({ ...targets })
+
+  const [tutorText, setTutorText] = useState('')
+  const [tutorLoading, setTutorLoading] = useState(false)
+  const [tutorKey, setTutorKey] = useState(0)
+  const tutorStatsRef = useRef(null)
 
   const totalWords = learningQueue?.length || 0
   const totalIgnored = ignoreWordPool?.length || 0
@@ -158,10 +213,31 @@ export default function Track() {
   }, [activeModal, learningQueue, ignoreWordPool, dueWords])
 
   const userName = getUserName(user?.email)
-  const tutorMessage = useMemo(
-    () => generateTutorMessage(userName, totalWords, totalIgnored, dueCount),
-    [userName, totalWords, totalIgnored, dueCount]
-  )
+
+  const loadTutorMessage = useCallback(async () => {
+    const stats = gatherTodayStats(userName, totalWords, totalIgnored, dueCount, targets)
+    tutorStatsRef.current = stats
+    setTutorLoading(true)
+    setTutorText('')
+    try {
+      const msg = await fetchTutorMessage(stats)
+      if (tutorStatsRef.current === stats) {
+        setTutorText(msg)
+      }
+    } catch {
+      if (tutorStatsRef.current === stats) {
+        setTutorText('小英今天有点卡壳……刷新一下页面再试试？🤔')
+      }
+    } finally {
+      if (tutorStatsRef.current === stats) {
+        setTutorLoading(false)
+      }
+    }
+  }, [userName, totalWords, totalIgnored, dueCount, targets])
+
+  useEffect(() => {
+    loadTutorMessage()
+  }, [loadTutorMessage])
 
   return (
     <div className="max-w-4xl mx-auto pb-8">
@@ -206,22 +282,46 @@ export default function Track() {
         )}
       </div>
 
-      {/* ── Learning Companion ── */}
-      <div className="mb-6 flex items-start gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <CompanionCharacter />
+      {/* ── AI Tutor ── */}
+      <div className="mb-6 flex items-start gap-4">
+        <CompanionAvatar />
         <div className="relative flex-1">
-          <div className="absolute -left-2 top-4 w-3 h-3 bg-indigo-50 rotate-45 border-l border-t border-gray-100" />
-          <div className="bg-indigo-50 rounded-xl px-4 py-3.5">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Sparkles size={14} className="text-indigo-400" />
-              <span className="text-xs font-semibold text-indigo-500 tracking-wide">智能学伴</span>
+          <div className="absolute -left-2 top-5 w-3 h-3 bg-white rotate-45 border-l border-t border-gray-100" />
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className="text-indigo-400" />
+                <span className="text-xs font-semibold text-indigo-500 tracking-wide">小英 · 你的 AI 教练</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => { setDraftTargets({ ...targets }); setSettingsOpen(true) }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors"
+                  title="今日目标设定"
+                >
+                  <Settings size={13} />
+                </button>
+                <button
+                  onClick={loadTutorMessage}
+                  disabled={tutorLoading}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors disabled:text-gray-200"
+                  title="换个建议"
+                >
+                  <RotateCw size={13} className={tutorLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
-            <p className="text-sm text-gray-700 leading-relaxed mb-1">
-              {tutorMessage.summary}
-            </p>
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {tutorMessage.encouragement}
-            </p>
+
+            {tutorLoading && !tutorText ? (
+              <div className="space-y-2 animate-pulse">
+                <div className="h-3.5 bg-gray-100 rounded w-full" />
+                <div className="h-3.5 bg-gray-100 rounded w-3/4" />
+              </div>
+            ) : (
+              <p key={tutorKey} className="text-sm text-gray-700 leading-relaxed min-h-[2.5rem]">
+                {tutorText && <TypewriterText text={tutorText} />}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -314,6 +414,69 @@ export default function Track() {
         )}
       </div>
 
+      {/* ── Settings Modal ── */}
+      {settingsOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm"
+          onClick={() => setSettingsOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-900">⚙️ 设定今日目标</h3>
+              <button
+                onClick={() => setSettingsOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm text-gray-500 mb-1.5">每日新词目标</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={draftTargets.targetNew}
+                  onChange={(e) => setDraftTargets({ ...draftTargets, targetNew: Math.max(1, Number(e.target.value)) })}
+                  className="w-full rounded-lg border border-gray-200 p-3 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-500 mb-1.5">每日复习目标</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={draftTargets.targetReview}
+                  onChange={(e) => setDraftTargets({ ...draftTargets, targetReview: Math.max(1, Number(e.target.value)) })}
+                  className="w-full rounded-lg border border-gray-200 p-3 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => { setDraftTargets(DEFAULT_TARGETS); setTargets(DEFAULT_TARGETS); setSettingsOpen(false); setTutorKey(k => k + 1) }}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                恢复默认
+              </button>
+              <button
+                onClick={() => { setTargets(draftTargets); setSettingsOpen(false); setTutorKey(k => k + 1) }}
+                className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Word List Modal ── */}
       {activeModal && (
         <div
@@ -324,11 +487,8 @@ export default function Track() {
             className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-lg max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">
-                {MODAL_TITLE[activeModal]}
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900">{MODAL_TITLE[activeModal]}</h3>
               <button
                 onClick={() => setActiveModal(null)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
@@ -336,8 +496,6 @@ export default function Track() {
                 <X size={18} />
               </button>
             </div>
-
-            {/* Body */}
             <div className="overflow-y-auto p-4 flex-1">
               {renderModalContent(modalWordList, '暂无数据')}
             </div>
