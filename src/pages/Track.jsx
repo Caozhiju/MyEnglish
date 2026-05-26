@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react'
-import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
+import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 
@@ -11,10 +11,43 @@ function maskEmail(email) {
   return `${visible}${'*'.repeat(Math.max(0, name.length - 4))}@${domain}`
 }
 
+const MODAL_TITLE = {
+  queue: '生词库总储量',
+  ignored: '已排除噪音词汇',
+  review: '待复习词汇清单',
+}
+
+function renderModalContent(list, emptyText) {
+  if (list.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-gray-300 text-4xl mb-3">📭</p>
+        <p className="text-sm text-gray-400">{emptyText}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="divide-y divide-gray-50">
+      {list.map((item) => (
+        <div key={item.id} className="flex items-center gap-3 py-3 px-1">
+          <p className="text-sm font-semibold text-gray-900 flex-shrink-0 w-28 truncate">{item.word}</p>
+          {item.translations && item.translations.length > 0 && (
+            <p className="text-xs text-gray-500 truncate">
+              {item.translations.map((t) => t.translation || t).join(' · ')}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Track() {
   const { user, signOut } = useAuth()
   const [learningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
+  const [activeModal, setActiveModal] = useState(null)
 
   const totalWords = learningQueue?.length || 0
   const totalIgnored = ignoreWordPool?.length || 0
@@ -35,10 +68,39 @@ export default function Track() {
     }).length
   }, [learningQueue])
 
+  const dueWords = useMemo(() => {
+    if (!learningQueue || learningQueue.length === 0) return []
+    const now = Date.now()
+    return learningQueue.filter((it) => {
+      if (it.level === 2 || it.level === 3) return true
+      if (it.nextReviewDate) {
+        try {
+          return new Date(it.nextReviewDate).getTime() <= now
+        } catch {
+          return false
+        }
+      }
+      return false
+    })
+  }, [learningQueue])
+
   const recentWords = useMemo(() => {
     if (!learningQueue || learningQueue.length === 0) return []
     return [...learningQueue].reverse().slice(0, 8)
   }, [learningQueue])
+
+  const modalWordList = useMemo(() => {
+    switch (activeModal) {
+      case 'queue':
+        return learningQueue || []
+      case 'ignored':
+        return ignoreWordPool || []
+      case 'review':
+        return dueWords
+      default:
+        return []
+    }
+  }, [activeModal, learningQueue, ignoreWordPool, dueWords])
 
   return (
     <div className="max-w-4xl mx-auto pb-8">
@@ -85,7 +147,10 @@ export default function Track() {
 
       {/* ── Stats Cards ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div
+          onClick={() => setActiveModal('queue')}
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+        >
           <div className="flex items-center gap-3 mb-4">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
               <BookOpen size={18} className="text-indigo-500" />
@@ -96,7 +161,10 @@ export default function Track() {
           <p className="text-xs text-gray-400 mt-1">已收录至学习队列</p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div
+          onClick={() => setActiveModal('ignored')}
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+        >
           <div className="flex items-center gap-3 mb-4">
             <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
               <Filter size={18} className="text-amber-500" />
@@ -107,7 +175,10 @@ export default function Track() {
           <p className="text-xs text-gray-400 mt-1">已过滤的无用词汇</p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div
+          onClick={() => setActiveModal('review')}
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+        >
           <div className="flex items-center gap-3 mb-4">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
               <RefreshCw size={18} className="text-emerald-500" />
@@ -161,6 +232,37 @@ export default function Track() {
           </div>
         )}
       </div>
+
+      {/* ── Word List Modal ── */}
+      {activeModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm"
+          onClick={() => setActiveModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-lg max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">
+                {MODAL_TITLE[activeModal]}
+              </h3>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto p-4 flex-1">
+              {renderModalContent(modalWordList, '暂无数据')}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
