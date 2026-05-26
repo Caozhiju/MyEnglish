@@ -141,6 +141,7 @@ export default function Vocab() {
   const current = effectiveQueue[currentIndex] ?? null
 
   const totalProgress = currentSession.totalCount || effectiveQueue.length
+  const displayCompleted = Math.min(sessionCompleted, totalProgress)
   const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
 
   // reset card state when current card changes
@@ -430,6 +431,27 @@ export default function Vocab() {
     if (!current) return false
     const saved = current.savedSentences || []
     return saved.some((s) => s.en === sentence.en && s.cn === sentence.cn)
+  }
+
+  /* ── 数据驱动结束判定：队列为空 → 完成界面 ── */
+  if (!favoritesOnly && currentSession.dailyQueue.length === 0 && sessionCompleted > 0 && !loading) {
+    return (
+      <div className="min-h-screen pb-8">
+        <div className="max-w-md mx-auto pt-20 text-center">
+          <p className="text-5xl mb-6">🎉</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">今日任务已完成</h2>
+          <p className="text-gray-500 mb-8">
+            今日共学习了 {sessionCompleted} 个单词，明天再来复习吧！
+          </p>
+          <button
+            onClick={() => setFavoritesOnly(true)}
+            className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+          >
+            查看收藏
+          </button>
+        </div>
+      </div>
+    )
   }
 
   /* ── JSX ── */
@@ -850,13 +872,13 @@ export default function Vocab() {
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
             <span>学习进度</span>
             <span>
-              {sessionCompleted} / {totalProgress}
+              {displayCompleted} / {totalProgress}
             </span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-gray-900 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progressPct}%` }}
+              style={{ width: `${Math.min(progressPct, 100)}%` }}
             />
           </div>
         </div>
