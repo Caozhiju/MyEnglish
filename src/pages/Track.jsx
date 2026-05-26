@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight, X } from 'lucide-react'
+import { BookOpen, Filter, RefreshCw, LogOut, Cloud, CloudOff, ChevronRight, X, Sparkles } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 
@@ -9,6 +9,13 @@ function maskEmail(email) {
   if (!domain) return email
   const visible = name.slice(0, 4)
   return `${visible}${'*'.repeat(Math.max(0, name.length - 4))}@${domain}`
+}
+
+function getUserName(email) {
+  if (!email) return '同学'
+  const name = email.split('@')[0]
+  if (!name) return '同学'
+  return name.length <= 4 ? name : name.slice(0, 4) + '**'
 }
 
 const MODAL_TITLE = {
@@ -40,6 +47,54 @@ function renderModalContent(list, emptyText) {
         </div>
       ))}
     </div>
+  )
+}
+
+function generateTutorMessage(userName, totalWords, totalIgnored, dueCount) {
+  let summary = ''
+  let encouragement = ''
+
+  if (totalIgnored > 0) {
+    summary = `哇，${userName}，你已经排除了 ${totalIgnored} 个噪音词！这极大地清空了学习干扰！👏`
+  } else if (totalWords > 0) {
+    summary = `${userName}，你的词库共收录了 ${totalWords} 个生词，每次积累都在为流利铺路！📚`
+  } else {
+    summary = `嗨 ${userName}，你的专属学习空间已经准备好了，来捕获第一个生词吧！✨`
+  }
+
+  if (dueCount > 0) {
+    encouragement = `你今天还有 ${dueCount} 个词需要复习，咱们加油把它们都攻克了吧！💪`
+  } else if (totalWords > 0) {
+    encouragement = `今天的复习池是空的，不如去阅读板块捕获一些新的词汇？📖✨`
+  } else {
+    encouragement = `快去阅读板块开始第一轮捕获吧，每一个生词都是通往流利的阶梯！🚀`
+  }
+
+  return { summary, encouragement }
+}
+
+function CompanionCharacter() {
+  return (
+    <svg viewBox="0 0 80 96" className="w-20 h-24 flex-shrink-0" fill="none">
+      <ellipse cx="40" cy="92" rx="22" ry="4" fill="#F1F5F9" />
+      <ellipse cx="28" cy="85" rx="7" ry="3.5" fill="#FED7AA" />
+      <ellipse cx="52" cy="85" rx="7" ry="3.5" fill="#FED7AA" />
+      <ellipse cx="40" cy="62" rx="22" ry="25" fill="#E0E7FF" />
+      <ellipse cx="40" cy="69" rx="13" ry="13" fill="#FFF" />
+      <circle cx="40" cy="30" r="21" fill="#E0E7FF" />
+      <circle cx="33" cy="27" r="6.5" fill="#FFF" />
+      <circle cx="47" cy="27" r="6.5" fill="#FFF" />
+      <circle cx="35" cy="27" r="3" fill="#1E293B" />
+      <circle cx="49" cy="27" r="3" fill="#1E293B" />
+      <circle cx="36.5" cy="25.5" r="1.2" fill="#FFF" />
+      <circle cx="50.5" cy="25.5" r="1.2" fill="#FFF" />
+      <ellipse cx="28" cy="35" rx="3.5" ry="2" fill="#FECDD3" opacity="0.6" />
+      <ellipse cx="52" cy="35" rx="3.5" ry="2" fill="#FECDD3" opacity="0.6" />
+      <path d="M37 40 L43 40 L40 44 Z" fill="#F59E0B" />
+      <rect x="22" y="10" width="36" height="4" rx="2" fill="#6366F1" />
+      <rect x="36" y="6" width="8" height="4" rx="2" fill="#6366F1" />
+      <circle cx="57" cy="12" r="3" fill="#F59E0B" />
+    </svg>
   )
 }
 
@@ -102,12 +157,18 @@ export default function Track() {
     }
   }, [activeModal, learningQueue, ignoreWordPool, dueWords])
 
+  const userName = getUserName(user?.email)
+  const tutorMessage = useMemo(
+    () => generateTutorMessage(userName, totalWords, totalIgnored, dueCount),
+    [userName, totalWords, totalIgnored, dueCount]
+  )
+
   return (
     <div className="max-w-4xl mx-auto pb-8">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Track</h2>
 
       {/* ── Account & Sync Status ── */}
-      <div className="mb-8">
+      <div className="mb-6">
         {user ? (
           <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center gap-4">
@@ -143,6 +204,26 @@ export default function Track() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Learning Companion ── */}
+      <div className="mb-6 flex items-start gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <CompanionCharacter />
+        <div className="relative flex-1">
+          <div className="absolute -left-2 top-4 w-3 h-3 bg-indigo-50 rotate-45 border-l border-t border-gray-100" />
+          <div className="bg-indigo-50 rounded-xl px-4 py-3.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles size={14} className="text-indigo-400" />
+              <span className="text-xs font-semibold text-indigo-500 tracking-wide">智能学伴</span>
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed mb-1">
+              {tutorMessage.summary}
+            </p>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {tutorMessage.encouragement}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ── Stats Cards ── */}
