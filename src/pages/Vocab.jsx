@@ -72,6 +72,7 @@ export default function Vocab() {
   const [currentSession, setCurrentSession] = useStorage('currentSession', {
     dailyQueue: [],
     date: startOfDayISO(0),
+    totalCount: 0,
   })
 
   /* persisted config */
@@ -122,7 +123,7 @@ export default function Vocab() {
   useEffect(() => {
     const today = startOfDayISO(0)
     if (currentSession.date !== today) {
-      setCurrentSession({ dailyQueue: [], date: today })
+      setCurrentSession({ dailyQueue: [], date: today, totalCount: 0 })
       setSessionCompleted(0)
     }
   }, [])
@@ -134,18 +135,12 @@ export default function Vocab() {
         (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
       )
     }
-    return queue.filter((it) => {
-      try {
-        return new Date(it.nextReviewDate) <= new Date()
-      } catch (e) {
-        return true
-      }
-    })
+    return queue
   }, [learningQueue, currentSession.dailyQueue, favoritesOnly])
 
   const current = effectiveQueue[currentIndex] ?? null
 
-  const totalProgress = sessionCompleted + effectiveQueue.length
+  const totalProgress = currentSession.totalCount || effectiveQueue.length
   const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
 
   // reset card state when current card changes
@@ -251,6 +246,7 @@ export default function Vocab() {
       setCurrentSession({
         dailyQueue: items,
         date: nowISO,
+        totalCount: items.length,
       })
       setSessionCompleted(0)
       setCurrentIndex(0)
@@ -377,7 +373,7 @@ export default function Vocab() {
 
   function clearQueue() {
     setLearningQueue([])
-    setCurrentSession({ dailyQueue: [], date: startOfDayISO(0) })
+    setCurrentSession({ dailyQueue: [], date: startOfDayISO(0), totalCount: 0 })
     setSessionCompleted(0)
     setCurrentIndex(0)
     setRenderKey(prev => prev + 1)
