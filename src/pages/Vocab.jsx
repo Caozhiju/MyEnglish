@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Volume2, Star, RefreshCw } from 'lucide-react'
 import { useStorage } from '../hooks/useStorage'
 import { useSyncStorage } from '../hooks/useSyncStorage'
+import { useNavigation } from '../contexts/NavigationContext'
 import { loadVocabulary, getVocabSources } from '../services/dataService'
 import { playAudio, cancelAudio } from '../utils/tts'
 
@@ -64,6 +65,8 @@ function getMockExamples(word) {
 /* ── component ── */
 
 export default function Vocab() {
+  const { navigationParams, clearParams } = useNavigation()
+
   /* ── persistent state (cloud-synced) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
   const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
@@ -83,6 +86,7 @@ export default function Vocab() {
   const [autoPlayAudio, setAutoPlayAudio] = useStorage('vocabAutoPlayAudio', false)
 
   /* ── ephemeral UI state ── */
+  const [vocabMode, setVocabMode] = useState('learn')
   const [revealed, setRevealed] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
@@ -127,6 +131,49 @@ export default function Vocab() {
       setSessionCompleted(0)
     }
   }, [])
+
+  /* 从导航参数切换复习模式 */
+  useEffect(() => {
+    if (navigationParams.vocabMode === 'review') {
+      setVocabMode('review')
+      clearParams()
+    }
+  }, [navigationParams.vocabMode, clearParams])
+
+  /* 复习模式：用待复习词填充 dailyQueue */
+  useEffect(() => {
+    if (vocabMode !== 'review') return
+    const now = Date.now()
+    const dueWords = learningQueue.filter((it) => {
+      if (it.level === 2 || it.level === 3) return true
+      if (it.nextReviewDate) {
+        try { return new Date(it.nextReviewDate).getTime() <= now }
+        catch { return false }
+      }
+      return false
+    })
+    setCurrentSession({
+      dailyQueue: dueWords,
+      date: startOfDayISO(0),
+      totalCount: dueWords.length,
+    })
+    setSessionCompleted(0)
+    setCurrentIndex(0)
+    setRenderKey(prev => prev + 1)
+  }, [vocabMode])
+
+  const dueCount = useMemo(() => {
+    if (!learningQueue || learningQueue.length === 0) return 0
+    const now = Date.now()
+    return learningQueue.filter((it) => {
+      if (it.level === 2 || it.level === 3) return true
+      if (it.nextReviewDate) {
+        try { return new Date(it.nextReviewDate).getTime() <= now }
+        catch { return false }
+      }
+      return false
+    }).length
+  }, [learningQueue])
 
   const effectiveQueue = useMemo(() => {
     const queue = currentSession.dailyQueue.length > 0 ? currentSession.dailyQueue : learningQueue
@@ -435,6 +482,26 @@ export default function Vocab() {
 
   /* ── 数据驱动结束判定：队列为空 → 完成界面 ── */
   if (!favoritesOnly && currentSession.dailyQueue.length === 0 && sessionCompleted > 0 && !loading) {
+    if (vocabMode === 'review') {
+      return (
+        <div className="min-h-screen pb-8">
+          <div className="max-w-md mx-auto pt-20 text-center">
+            <p className="text-5xl mb-6">🎉</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">今天的复习任务全部搞定啦！</h2>
+            <p className="text-gray-500 mb-6">
+              学姐在 Track 板块看着你呢，快去听听她怎么夸你！
+            </p>
+            <button
+              onClick={() => setVocabMode('learn')}
+              className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+            >
+              去学习新词 →
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen pb-8">
         <div className="max-w-md mx-auto pt-20 text-center">
@@ -495,6 +562,28 @@ export default function Vocab() {
             className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
           >
             清空队列
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mode Switch: Learn / Review ── */}
+      <div className="flex justify-center mb-6">
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+          <button
+            onClick={() => setVocabMode('learn')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              vocabMode === 'learn' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
+            }`}
+          >
+            学习新词
+          </button>
+          <button
+            onClick={() => setVocabMode('review')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              vocabMode === 'review' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
+            }`}
+          >
+            温故知新 ({dueCount})
           </button>
         </div>
       </div>
@@ -728,6 +817,21 @@ export default function Vocab() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex items-center justify-center text-center">
               <div>
                 {currentSession.dailyQueue.length === 0 && sessionCompleted > 0 ? (
+                  vocabMode === 'review' ? (
+                    <>
+                      <p className="text-4xl mb-4">🎉</p>
+                      <p className="text-gray-700 text-lg font-medium mb-2">今天的复习任务全部搞定啦！</p>
+                      <p className="text-gray-400 text-sm mb-6">
+                        学姐在 Track 板块看着你呢，快去听听她怎么夸你！
+                      </p>
+                      <button
+                        onClick={() => setVocabMode('learn')}
+                        className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+                      >
+                        去学习新词 →
+                      </button>
+                    </>
+                  ) : (
                   <>
                     <p className="text-4xl mb-4">✅</p>
                     <p className="text-gray-700 text-lg font-medium mb-2">今日任务已完成</p>
@@ -741,6 +845,7 @@ export default function Vocab() {
                       查看收藏
                     </button>
                   </>
+                  )
                 ) : (
                   <>
                     <p className="text-gray-400 text-sm mb-4">

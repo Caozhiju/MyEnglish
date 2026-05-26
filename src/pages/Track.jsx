@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useStorage } from '../hooks/useStorage'
 import { chatCompletion, isLLMConfigured } from '../services/llmService'
+import { useNavigation } from '../contexts/NavigationContext'
 
 function maskEmail(email) {
   if (!email) return ''
@@ -148,6 +149,7 @@ function CompanionAvatar() {
 
 export default function Track() {
   const { user, signOut } = useAuth()
+  const { navigate } = useNavigation()
   const [learningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
   const [targets, setTargets] = useStorage('tutorTargets', DEFAULT_TARGETS)
@@ -369,6 +371,15 @@ export default function Track() {
           </div>
           <p className="text-3xl font-bold text-gray-900">{dueCount}</p>
           <p className="text-xs text-gray-400 mt-1">需要今天复习</p>
+          {dueCount > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate('Vocab', { vocabMode: 'review' }) }}
+              className="mt-4 w-full py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors text-xs font-medium flex items-center justify-center gap-1.5"
+            >
+              立刻去复习
+              <ChevronRight size={14} />
+            </button>
+          )}
         </div>
       </div>
 

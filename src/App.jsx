@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BookOpen, FileText, Mic, BarChart2, LogIn, LogOut } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { NavigationProvider, useNavigation } from './contexts/NavigationContext'
 import Vocab from './pages/Vocab'
 import Read from './pages/Read'
 import Speak from './pages/Speak'
@@ -124,7 +125,7 @@ function LoginWidget() {
 }
 
 function AppShell() {
-  const [page, setPage] = useState('Vocab')
+  const { page, navigate } = useNavigation()
 
   function renderPage() {
     switch (page) {
@@ -156,7 +157,7 @@ function AppShell() {
             return (
               <button
                 key={m.key}
-                onClick={() => setPage(m.key)}
+                onClick={() => navigate(m.key)}
                 className={`w-full text-left flex items-center gap-3 py-2 px-3 rounded-lg transition-all duration-200 ${
                   active
                     ? 'bg-indigo-50 text-indigo-600 font-semibold'
@@ -183,7 +184,9 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <NavigationProvider>
+        <AppShell />
+      </NavigationProvider>
     </AuthProvider>
   )
 }
