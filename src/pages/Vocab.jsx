@@ -70,18 +70,12 @@ export default function Vocab() {
   /* ── persistent state (cloud-synced) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
   const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
-  
-  /* ── 新增：当前学习会话（包含今日队列和日期） ── */
-  const [currentSession, setCurrentSession] = useStorage('currentSession', {
-    dailyQueue: [],
-    date: startOfDayISO(0),
-    totalCount: 0,
-  })
 
-  const [reviewSession, setReviewSession] = useStorage('reviewSession', {
-    dailyQueue: [],
-    totalCount: 0,
-  })
+  /* ── 双轨制：新词轨道 / 复习轨道 (useState, 互不串门) ── */
+  const [learnQueue, setLearnQueue] = useState([])
+  const [reviewQueue, setReviewQueue] = useState([])
+  const [learnTotal, setLearnTotal] = useState(0)
+  const [reviewTotal, setReviewTotal] = useState(0)
 
   /* persisted config */
   const defaultSource = VOCAB_SOURCES.length > 0 ? VOCAB_SOURCES[0] : ''
@@ -128,15 +122,6 @@ export default function Vocab() {
 
   /* ── derived ── */
 
-  /* 检查会话是否是今天，如果不是则初始化新会话 */
-  useEffect(() => {
-    const today = startOfDayISO(0)
-    if (currentSession.date !== today) {
-      setCurrentSession({ dailyQueue: [], date: today, totalCount: 0 })
-      setSessionCompleted(0)
-    }
-  }, [])
-
   /* 从导航参数切换复习模式 */
   useEffect(() => {
     if (navigationParams.vocabMode === 'review') {
@@ -145,7 +130,7 @@ export default function Vocab() {
     }
   }, [navigationParams.vocabMode, clearParams])
 
-  /* ── 模式切换：【强力重置】 + 对应模式的 dailyQueue ── */
+  /* ── 模式切换：【强力重置】 + 填充对应轨道的队列 ── */
   useEffect(() => {
     setSessionCompleted(0)
     setCurrentIndex(0)
@@ -165,7 +150,8 @@ export default function Vocab() {
         }
         return false
       })
-      setReviewSession({ dailyQueue: dueWords, totalCount: dueWords.length })
+      setReviewQueue(dueWords)
+      setReviewTotal(dueWords.length)
     }
   }, [vocabMode])
 
@@ -182,26 +168,22 @@ export default function Vocab() {
     }).length
   }, [learningQueue])
 
-  const learnWordsTotal = currentSession.totalCount || 0
-  const reviewWordsTotal = reviewSession.totalCount || 0
-  const currentModeTotal = vocabMode === 'learn' ? learnWordsTotal : reviewWordsTotal
+  /* 当前生效轨道：卡片只从 vocabMode 对应的队列取第一个词 */
+  const currentQueue = vocabMode === 'learn' ? learnQueue : reviewQueue
+  const current = currentQueue[0] ?? null
 
-  const effectiveQueue = useMemo(() => {
-    if (vocabMode === 'review') return reviewSession.dailyQueue
-    const queue = currentSession.dailyQueue.length > 0 ? currentSession.dailyQueue : learningQueue
-    if (favoritesOnly) {
-      return queue.filter(
-        (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
-      )
-    }
-    return queue
-  }, [learningQueue, currentSession.dailyQueue, reviewSession.dailyQueue, favoritesOnly, vocabMode])
-
-  const current = effectiveQueue[currentIndex] ?? null
-
-  const totalProgress = currentModeTotal || effectiveQueue.length
+  const currentModeTotal = vocabMode === 'learn' ? learnTotal : reviewTotal
+  const totalProgress = currentModeTotal || currentQueue.length
   const displayCompleted = Math.min(sessionCompleted, totalProgress)
   const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
+
+  /* 收藏室列表：始终读取持久 learningQueue（非轨道数据） */
+  const favoritesList = useMemo(() => {
+    if (!learningQueue) return []
+    return learningQueue.filter(
+      (it) => it.isFavorite || (Array.isArray(it.savedSentences) && it.savedSentences.length > 0)
+    )
+  }, [learningQueue])
 
   // reset card state when current card changes
   useEffect(() => {
@@ -301,13 +283,10 @@ export default function Vocab() {
         }
       })
 
-      /* ── 新增：将新词添加到 learningQueue，并初始化今日队列 ── */
+      /* 新词只装入 learnQueue / learnTotal，不碰 reviewQueue */
       setLearningQueue((prev) => [...prev, ...items])
-      setCurrentSession({
-        dailyQueue: items,
-        date: nowISO,
-        totalCount: items.length,
-      })
+      setLearnQueue(items)
+      setLearnTotal(items.length)
       setSessionCompleted(0)
       setCurrentIndex(0)
       setRenderKey(prev => prev + 1)
@@ -342,23 +321,24 @@ export default function Vocab() {
       return [...before, updated, ...after]
     })
 
+    /* 路由到对应轨道：slice(1) 移除首个 + 忘记时追加副本到尾部 */
     if (vocabMode === 'review') {
-      setReviewSession(prev => {
-        const remaining = prev.dailyQueue.slice(1)
+      setReviewQueue(prev => {
+        const remaining = prev.slice(1)
         if (asLevel === 3) {
-          const reQueuedWord = { ...currentWord, level: 0 }
-          return { ...prev, dailyQueue: [...remaining, reQueuedWord] }
+          const copy = { ...currentWord, level: 0 }
+          return [...remaining, copy]
         }
-        return { ...prev, dailyQueue: remaining }
+        return remaining
       })
     } else {
-      setCurrentSession(prev => {
-        const remaining = prev.dailyQueue.slice(1)
+      setLearnQueue(prev => {
+        const remaining = prev.slice(1)
         if (asLevel === 3) {
-          const reQueuedWord = { ...currentWord, level: 0 }
-          return { ...prev, dailyQueue: [...remaining, reQueuedWord] }
+          const copy = { ...currentWord, level: 0 }
+          return [...remaining, copy]
         }
-        return { ...prev, dailyQueue: remaining }
+        return remaining
       })
     }
 
@@ -444,8 +424,10 @@ export default function Vocab() {
 
   function clearQueue() {
     setLearningQueue([])
-    setCurrentSession({ dailyQueue: [], date: startOfDayISO(0), totalCount: 0 })
-    setReviewSession({ dailyQueue: [], totalCount: 0 })
+    setLearnQueue([])
+    setReviewQueue([])
+    setLearnTotal(0)
+    setReviewTotal(0)
     setSessionCompleted(0)
     setCurrentIndex(0)
     setRenderKey(prev => prev + 1)
@@ -504,9 +486,9 @@ export default function Vocab() {
     return saved.some((s) => s.en === sentence.en && s.cn === sentence.cn)
   }
 
-  /* ── 数据驱动结束判定：队列为空 → 完成界面 ── */
+  /* ── 数据驱动结束判定：当前轨道为空 → 完成界面 ── */
   if (!favoritesOnly && !loading) {
-    const empty = vocabMode === 'review' ? reviewSession.dailyQueue.length === 0 : currentSession.dailyQueue.length === 0 && sessionCompleted > 0
+    const empty = currentQueue.length === 0 && sessionCompleted > 0
     if (empty) {
       if (vocabMode === 'review') {
         return (
@@ -545,7 +527,7 @@ export default function Vocab() {
         </div>
       </div>
     )
-  }
+    }
   }
 
   /* ── JSX ── */
@@ -661,9 +643,9 @@ export default function Vocab() {
             </div>
           )}
 
-          {/* Card */}
+          {/* Card — 组合 key 使切换模式时销毁旧 DOM */}
           {!loading && current && (
-            <div key={renderKey} className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex flex-col items-center justify-center text-center">
+            <div key={`${vocabMode}-${renderKey}`} className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex flex-col items-center justify-center text-center">
               {/* Favorite star */}
               <button
                 onClick={toggleFavorite}
@@ -839,11 +821,11 @@ export default function Vocab() {
             </div>
           )}
 
-          {/* Empty state (not loading, no card, no error) — learning mode */}
+          {/* Empty state (not loading, no card, no error) */}
           {!loading && !current && !loadError && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 min-h-[360px] flex items-center justify-center text-center">
               <div>
-                {(vocabMode === 'review' ? reviewSession.dailyQueue.length === 0 : currentSession.dailyQueue.length === 0 && sessionCompleted > 0) ? (
+                {currentQueue.length === 0 && sessionCompleted > 0 ? (
                   vocabMode === 'review' ? (
                     <>
                       <p className="text-4xl mb-4">🎉</p>
@@ -897,7 +879,7 @@ export default function Vocab() {
       {/* ── Favorites mode: scrollable list ── */}
       {favoritesOnly && (
         <div className="max-w-2xl mx-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-          {effectiveQueue.length === 0 ? (
+          {favoritesList.length === 0 ? (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-16 flex items-center justify-center text-center">
               <div>
                 <p className="text-4xl mb-4">📖</p>
@@ -909,7 +891,7 @@ export default function Vocab() {
             </div>
           ) : (
             <div className="flex flex-col gap-6 pb-8">
-              {effectiveQueue.map((item) => {
+              {favoritesList.map((item) => {
                 const hasItemTranslations =
                   Array.isArray(item.translations) && item.translations.length > 0
                 const hasSavedSentences =
