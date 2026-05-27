@@ -101,10 +101,13 @@ export default function Speak() {
     let transcript
     try {
       transcript = await transcribeAudio(blob)
-    } catch {
+    } catch (err) {
       isProcessingRef.current = false
       setStatusText('按住麦克风开始说话')
-      setErrorTimed('语音识别失败，请重试')
+      const msg = err.message?.includes('endpoint not supported')
+        ? '语音识别接口不可用，请检查 VITE_STT_BASE_URL 配置'
+        : '语音识别失败，请重试'
+      setErrorTimed(msg)
       return
     }
     if (!transcript) {
