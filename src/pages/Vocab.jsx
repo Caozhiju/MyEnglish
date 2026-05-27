@@ -546,6 +546,7 @@ export default function Vocab() {
       </div>
     )
   }
+  }
 
   /* ── JSX ── */
 
