@@ -5,6 +5,7 @@ import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useNavigation } from '../contexts/NavigationContext'
 import { useAuth } from '../contexts/AuthContext'
 import { upsertUserProgress } from '../services/supabaseDataService'
+import { useGlobalSync } from '../contexts/GlobalSyncContext'
 import { loadVocabulary, getVocabSources } from '../services/dataService'
 import { playAudio, cancelAudio } from '../utils/tts'
 
@@ -69,6 +70,7 @@ function getMockExamples(word) {
 export default function Vocab() {
   const { navigationParams, clearParams } = useNavigation()
   const { user } = useAuth()
+  const { learningPlan, triggerGlobalRefresh } = useGlobalSync()
 
   /* ── persistent state (cloud-synced) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
@@ -153,17 +155,20 @@ export default function Vocab() {
         }
         return false
       })
-      /* 读取 Track 页面的每日复习上限，截断 reviewQueue */
-      let reviewLimit = 30
-      try {
-        const plan = JSON.parse(localStorage.getItem('tutorTargets'))
-        if (plan?.targetReview) reviewLimit = plan.targetReview
-      } catch { /* ignore */ }
+      /* 读取全局学习计划中的每日复习上限，截断 reviewQueue */
+      const reviewLimit = learningPlan.targetReview || 30
       const limited = dueWords.slice(0, reviewLimit)
       setReviewQueue(limited)
       setReviewTotal(limited.length)
     }
   }, [vocabMode])
+
+  /* ── 学习/复习完成时，触发全局刷新，通知 Read 和 Track 同步 ── */
+  useEffect(() => {
+    if (!favoritesOnly && !loading && currentQueue.length === 0 && sessionCompleted > 0) {
+      triggerGlobalRefresh()
+    }
+  }, [currentQueue.length, sessionCompleted, favoritesOnly, loading])
 
   const dueCount = useMemo(() => {
     if (!learningQueue || learningQueue.length === 0) return 0

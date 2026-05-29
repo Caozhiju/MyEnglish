@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { useStorage } from '../hooks/useStorage'
 import { useSyncStorage } from '../hooks/useSyncStorage'
+import { useAuth } from '../contexts/AuthContext'
+import { useGlobalSync } from '../contexts/GlobalSyncContext'
+import { fetchUserProgress } from '../services/supabaseDataService'
 import { playAudio } from '../utils/tts'
 import {
   generateArticle,
@@ -504,6 +507,9 @@ const GRAMMAR_OPTIONS = [
 ]
 
 export default function Read() {
+  const { user } = useAuth()
+  const { refreshTrigger } = useGlobalSync()
+
   /* ── ALL state declarations at top (no TDZ issues) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
   const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
@@ -594,6 +600,14 @@ export default function Read() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [llmArticle, selectedScenario])
+
+  /* ── 全局刷新监听：Vocab 完成学习/复习后，从 Supabase 重新拉取数据 ── */
+  useEffect(() => {
+    if (refreshTrigger === 0 || !user) return
+    fetchUserProgress(user.id).then((data) => {
+      if (data?.learning_queue) setLearningQueue(data.learning_queue)
+    }).catch(() => {})
+  }, [refreshTrigger, user])
 
   /* ── derived ── */
 

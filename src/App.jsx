@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BookOpen, FileText, Mic, BarChart2, LogIn, LogOut } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext'
+import { GlobalSyncProvider } from './contexts/GlobalSyncContext'
 import Vocab from './pages/Vocab'
 import Read from './pages/Read'
 import Speak from './pages/Speak'
@@ -184,9 +185,11 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationProvider>
-        <AppShell />
-      </NavigationProvider>
+      <GlobalSyncProvider>
+        <NavigationProvider>
+          <AppShell />
+        </NavigationProvider>
+      </GlobalSyncProvider>
     </AuthProvider>
   )
 }
