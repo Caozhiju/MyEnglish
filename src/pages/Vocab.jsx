@@ -3,6 +3,8 @@ import { Volume2, Star, RefreshCw } from 'lucide-react'
 import { useStorage } from '../hooks/useStorage'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useNavigation } from '../contexts/NavigationContext'
+import { useAuth } from '../contexts/AuthContext'
+import { upsertUserProgress } from '../services/supabaseDataService'
 import { loadVocabulary, getVocabSources } from '../services/dataService'
 import { playAudio, cancelAudio } from '../utils/tts'
 
@@ -66,6 +68,7 @@ function getMockExamples(word) {
 
 export default function Vocab() {
   const { navigationParams, clearParams } = useNavigation()
+  const { user } = useAuth()
 
   /* ── persistent state (cloud-synced) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
@@ -309,16 +312,26 @@ export default function Vocab() {
     const currentWord = current
     const nextReviewDate = asLevel === 1 ? startOfDayISO(3) : asLevel === 2 ? startOfDayISO(1) : startOfDayISO(0)
 
+    /* 同步持久化到 Supabase（绕过 useSyncStorage 的 800ms 防抖，确保复习完绝不回溯） */
+    const persistToSupabase = (updatedQueue) => {
+      if (user) {
+        upsertUserProgress(user.id, { learning_queue: updatedQueue }).catch((err) => {
+          console.warn('Failed to persist review progress:', err)
+        })
+      }
+    }
+
     setLearningQueue(prev => {
       const idx = prev.findIndex(it => it.id === currentWord.id)
       if (idx === -1) return prev
       const before = prev.slice(0, idx)
       const after = prev.slice(idx + 1)
       const updated = { ...prev[idx], level: asLevel, nextReviewDate }
-      if (asLevel === 3) {
-        return [...before, updated, ...after, { ...updated, level: 0 }]
-      }
-      return [...before, updated, ...after]
+      const next = asLevel === 3
+        ? [...before, updated, ...after, { ...updated, level: 0 }]
+        : [...before, updated, ...after]
+      persistToSupabase(next)
+      return next
     })
 
     /* 路由到对应轨道：slice(1) 移除首个 + 忘记时追加副本到尾部 */
