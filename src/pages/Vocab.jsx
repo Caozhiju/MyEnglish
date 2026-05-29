@@ -153,8 +153,15 @@ export default function Vocab() {
         }
         return false
       })
-      setReviewQueue(dueWords)
-      setReviewTotal(dueWords.length)
+      /* 读取 Track 页面的每日复习上限，截断 reviewQueue */
+      let reviewLimit = 30
+      try {
+        const plan = JSON.parse(localStorage.getItem('tutorTargets'))
+        if (plan?.targetReview) reviewLimit = plan.targetReview
+      } catch { /* ignore */ }
+      const limited = dueWords.slice(0, reviewLimit)
+      setReviewQueue(limited)
+      setReviewTotal(limited.length)
     }
   }, [vocabMode])
 
@@ -304,7 +311,7 @@ export default function Vocab() {
 
   /* ── spaced repetition ── */
 
-  function advanceCard(asLevel) {
+  async function advanceCard(asLevel) {
     if (!current || transitioningRef.current) return
     transitioningRef.current = true
     setIsTransitioning(true)
@@ -312,61 +319,48 @@ export default function Vocab() {
     const currentWord = current
     const nextReviewDate = asLevel === 1 ? startOfDayISO(3) : asLevel === 2 ? startOfDayISO(1) : startOfDayISO(0)
 
-    /* 同步持久化到 Supabase（绕过 useSyncStorage 的 800ms 防抖，确保复习完绝不回溯） */
-    const persistToSupabase = (updatedQueue) => {
-      if (user) {
-        upsertUserProgress(user.id, { learning_queue: updatedQueue }).catch((err) => {
-          console.warn('Failed to persist review progress:', err)
-        })
+    try {
+      /* 根据当前 learningQueue 计算出新队列 */
+      const idx = learningQueue.findIndex(it => it.id === currentWord.id)
+      let newQueue = learningQueue
+      if (idx !== -1) {
+        const before = learningQueue.slice(0, idx)
+        const after = learningQueue.slice(idx + 1)
+        const updated = { ...learningQueue[idx], level: asLevel, nextReviewDate }
+        newQueue = asLevel === 3
+          ? [...before, updated, ...after, { ...updated, level: 0 }]
+          : [...before, updated, ...after]
       }
-    }
 
-    setLearningQueue(prev => {
-      const idx = prev.findIndex(it => it.id === currentWord.id)
-      if (idx === -1) return prev
-      const before = prev.slice(0, idx)
-      const after = prev.slice(idx + 1)
-      const updated = { ...prev[idx], level: asLevel, nextReviewDate }
-      const next = asLevel === 3
-        ? [...before, updated, ...after, { ...updated, level: 0 }]
-        : [...before, updated, ...after]
-      persistToSupabase(next)
-      return next
-    })
+      /* 更新本地状态（即时响应） */
+      setLearningQueue(newQueue)
 
-    /* 路由到对应轨道：slice(1) 移除首个 + 忘记时追加副本到尾部 */
-    if (vocabMode === 'review') {
-      setReviewQueue(prev => {
-        const remaining = prev.slice(1)
-        if (asLevel === 3) {
-          const copy = { ...currentWord, level: 0 }
-          return [...remaining, copy]
-        }
-        return remaining
-      })
-    } else {
-      setLearnQueue(prev => {
-        const remaining = prev.slice(1)
-        if (asLevel === 3) {
-          const copy = { ...currentWord, level: 0 }
-          return [...remaining, copy]
-        }
-        return remaining
-      })
-    }
+      /* 路由到对应轨道 */
+      if (vocabMode === 'review') {
+        setReviewQueue(prev => asLevel === 3 ? [...prev.slice(1), { ...currentWord, level: 0 }] : prev.slice(1))
+      } else {
+        setLearnQueue(prev => asLevel === 3 ? [...prev.slice(1), { ...currentWord, level: 0 }] : prev.slice(1))
+      }
 
-    setCurrentIndex(0)
-    setRenderKey(prev => prev + 1)
-    setRevealed(false)
-    setSpellingMode(false)
-    setSpellingInput('')
-    setSpellingWrong(false)
-    setSessionCompleted(c => c + 1)
+      setCurrentIndex(0)
+      setRenderKey(prev => prev + 1)
+      setRevealed(false)
+      setSpellingMode(false)
+      setSpellingInput('')
+      setSpellingWrong(false)
+      setSessionCompleted(c => c + 1)
 
-    setTimeout(() => {
+      /* 同步持久化到 Supabase（await 确保写入完成再释放） */
+      if (user) {
+        await upsertUserProgress(user.id, { learning_queue: newQueue })
+        window.dispatchEvent(new CustomEvent('vocab:synced'))
+      }
+    } catch (err) {
+      console.warn('Failed to persist review progress:', err)
+    } finally {
       transitioningRef.current = false
       setIsTransitioning(false)
-    }, 300)
+    }
   }
 
   /* ── spelling ── */

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useStorage } from '../hooks/useStorage'
 import { chatCompletion, isLLMConfigured } from '../services/llmService'
+import { fetchUserProgress } from '../services/supabaseDataService'
 import { useNavigation } from '../contexts/NavigationContext'
 
 function maskEmail(email) {
@@ -150,7 +151,7 @@ function CompanionAvatar() {
 export default function Track() {
   const { user, signOut } = useAuth()
   const { navigate } = useNavigation()
-  const [learningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
+  const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
   const [targets, setTargets] = useStorage('tutorTargets', DEFAULT_TARGETS)
   const [activeModal, setActiveModal] = useState(null)
@@ -216,6 +217,30 @@ export default function Track() {
   }, [activeModal, learningQueue, ignoreWordPool, dueWords])
 
   const userName = getUserName(user?.email)
+
+  /* ── 跨组件同步：当 Vocab 板块完成复习并写入 Supabase 后，重新拉取数据 ── */
+  const [syncEventCount, setSyncEventCount] = useState(0)
+  const syncTimerRef = useRef(null)
+
+  useEffect(() => {
+    const handler = () => setSyncEventCount(c => c + 1)
+    window.addEventListener('vocab:synced', handler)
+    return () => window.removeEventListener('vocab:synced', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!user || syncEventCount === 0) return
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(async () => {
+      try {
+        const data = await fetchUserProgress(user.id)
+        if (data?.learning_queue) {
+          setLearningQueue(data.learning_queue)
+        }
+      } catch { /* ignore */ }
+    }, 300)
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
+  }, [syncEventCount, user])
 
   const loadTutorMessage = useCallback(async () => {
     const stats = gatherTodayStats(userName, totalWords, totalIgnored, dueCount, targets)
