@@ -652,6 +652,24 @@ export default function Read() {
     return computeOutOfScope(llmArticle.english, poolSet)
   }, [llmArticle, poolSet])
 
+  const grammarHighlightSet = useMemo(() => {
+    if (!grammarArticle?.english) return new Set()
+    return computeOutOfScope(grammarArticle.english, poolSet)
+  }, [grammarArticle, poolSet])
+
+  const synthesisPromptPreview = useMemo(() => {
+    if (weakWordsAll.length === 0 && learningQueue.length === 0) return null
+    const previewWords = weakWordsAll.slice(0, 5)
+    return (
+      `Write a coherent micro-essay of approximately ${synthWordCount} words in natural, idiomatic English. ` +
+      'The essay must incorporate the following target vocabulary: ' +
+      (previewWords.length > 0
+        ? previewWords.map((w) => `"${w}"`).join(', ')
+        : '(words drawn from your learning queue)') +
+      '. Use each word in a meaningful context that demonstrates its typical usage and connotation.'
+    )
+  }, [weakWordsAll, learningQueue, synthWordCount])
+
   function handleShuffle() {
     setVisibleScenarios(pickRandom(ALL_SCENARIOS_POOL, 4))
     setSelectedScenario(null)
@@ -794,26 +812,6 @@ export default function Read() {
       setGrammarLoading(false)
     }
   }
-
-  const grammarHighlightSet = useMemo(() => {
-    if (!grammarArticle?.english) return new Set()
-    return computeOutOfScope(grammarArticle.english, poolSet)
-  }, [grammarArticle, poolSet])
-
-  /* ── prompt preview ── */
-
-  const synthesisPromptPreview = useMemo(() => {
-    if (weakWordsAll.length === 0 && learningQueue.length === 0) return null
-    const previewWords = weakWordsAll.slice(0, 5)
-    return (
-      `Write a coherent micro-essay of approximately ${synthWordCount} words in natural, idiomatic English. ` +
-      'The essay must incorporate the following target vocabulary: ' +
-      (previewWords.length > 0
-        ? previewWords.map((w) => `"${w}"`).join(', ')
-        : '(words drawn from your learning queue)') +
-      '. Use each word in a meaningful context that demonstrates its typical usage and connotation.'
-    )
-  }, [weakWordsAll, learningQueue, synthWordCount])
 
   /* ── shared ── */
 
