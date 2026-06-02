@@ -26,7 +26,7 @@ create policy "用户可以更新自己的进度"
   with check (auth.uid() = user_id);
 */
 
-import { getSupabase, isSupabaseConfigured } from '../supabaseClient'
+import { getSupabase, isSupabaseConfigured } from '../utils/supabase'
 
 export async function fetchUserProgress(userId) {
   if (!isSupabaseConfigured()) return {}
