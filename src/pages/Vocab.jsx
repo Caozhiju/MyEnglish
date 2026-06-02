@@ -163,6 +163,15 @@ export default function Vocab() {
     }
   }, [vocabMode])
 
+  /* 当前生效轨道：卡片只从 vocabMode 对应的队列取第一个词 */
+  const currentQueue = vocabMode === 'learn' ? learnQueue : reviewQueue
+  const current = currentQueue[0] ?? null
+
+  const currentModeTotal = vocabMode === 'learn' ? learnTotal : reviewTotal
+  const totalProgress = currentModeTotal || currentQueue.length
+  const displayCompleted = Math.min(sessionCompleted, totalProgress)
+  const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
+
   /* ── 学习/复习完成时，触发全局刷新，通知 Read 和 Track 同步 ── */
   useEffect(() => {
     if (!favoritesOnly && !loading && currentQueue.length === 0 && sessionCompleted > 0) {
@@ -182,15 +191,6 @@ export default function Vocab() {
       return false
     }).length
   }, [learningQueue])
-
-  /* 当前生效轨道：卡片只从 vocabMode 对应的队列取第一个词 */
-  const currentQueue = vocabMode === 'learn' ? learnQueue : reviewQueue
-  const current = currentQueue[0] ?? null
-
-  const currentModeTotal = vocabMode === 'learn' ? learnTotal : reviewTotal
-  const totalProgress = currentModeTotal || currentQueue.length
-  const displayCompleted = Math.min(sessionCompleted, totalProgress)
-  const progressPct = totalProgress > 0 ? Math.round((sessionCompleted / totalProgress) * 100) : 0
 
   /* 收藏室列表：始终读取持久 learningQueue（非轨道数据） */
   const favoritesList = useMemo(() => {
