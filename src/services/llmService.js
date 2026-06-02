@@ -1,7 +1,3 @@
-import.meta.env.VITE_LLM_API_KEY
-import.meta.env.VITE_LLM_BASE_URL
-import.meta.env.VITE_LLM_MODEL
-
 function getLLMConfig() {
   return {
     apiKey: import.meta.env.VITE_LLM_API_KEY || '',

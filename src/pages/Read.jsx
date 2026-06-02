@@ -7,7 +7,7 @@ import {
 import { useStorage } from '../hooks/useStorage'
 import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useAuth } from '../contexts/AuthContext'
-import { useGlobalSync } from '../contexts/GlobalSyncContext'
+import { useGlobal } from '../contexts/GlobalContext'
 import { fetchUserProgress } from '../services/supabaseDataService'
 import { playAudio } from '../utils/tts'
 import {
@@ -508,7 +508,7 @@ const GRAMMAR_OPTIONS = [
 
 export default function Read() {
   const { user } = useAuth()
-  const { refreshTrigger } = useGlobalSync()
+  const { refreshTrigger } = useGlobal()
 
   /* ── ALL state declarations at top (no TDZ issues) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')

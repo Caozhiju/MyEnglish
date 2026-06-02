@@ -6,7 +6,7 @@ import { useStorage } from '../hooks/useStorage'
 import { chatCompletion, isLLMConfigured } from '../services/llmService'
 import { fetchUserProgress } from '../services/supabaseDataService'
 import { useNavigation } from '../contexts/NavigationContext'
-import { useGlobalSync } from '../contexts/GlobalSyncContext'
+import { useGlobal } from '../contexts/GlobalContext'
 
 function maskEmail(email) {
   if (!email) return ''
@@ -154,7 +154,7 @@ export default function Track() {
   const { navigate } = useNavigation()
   const [learningQueue, setLearningQueue] = useSyncStorage('learningQueue', [], 'learning_queue')
   const [ignoreWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
-  const { learningPlan: targets, setLearningPlan: setTargets } = useGlobalSync()
+  const { learningPlan: targets, setLearningPlan: setTargets } = useGlobal()
   const [activeModal, setActiveModal] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [draftTargets, setDraftTargets] = useState({ ...targets })

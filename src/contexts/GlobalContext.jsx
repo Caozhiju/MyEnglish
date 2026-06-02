@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback } from 'react'
 
-const GlobalSyncContext = createContext(null)
+const GlobalContext = createContext(null)
 const DEFAULT_PLAN = { targetNew: 20, targetReview: 30 }
 
 function loadPlan() {
@@ -11,7 +11,7 @@ function loadPlan() {
   }
 }
 
-export function GlobalSyncProvider({ children }) {
+export function GlobalProvider({ children }) {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [learningPlan, setLearningPlanState] = useState(loadPlan)
 
@@ -25,14 +25,14 @@ export function GlobalSyncProvider({ children }) {
   }, [])
 
   return (
-    <GlobalSyncContext.Provider value={{ refreshTrigger, triggerGlobalRefresh, learningPlan, setLearningPlan }}>
+    <GlobalContext.Provider value={{ refreshTrigger, triggerGlobalRefresh, learningPlan, setLearningPlan }}>
       {children}
-    </GlobalSyncContext.Provider>
+    </GlobalContext.Provider>
   )
 }
 
-export function useGlobalSync() {
-  const ctx = useContext(GlobalSyncContext)
-  if (!ctx) throw new Error('useGlobalSync must be used within GlobalSyncProvider')
+export function useGlobal() {
+  const ctx = useContext(GlobalContext)
+  if (!ctx) throw new Error('useGlobal must be used within GlobalProvider')
   return ctx
 }

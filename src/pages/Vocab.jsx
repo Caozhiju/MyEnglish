@@ -5,7 +5,7 @@ import { useSyncStorage } from '../hooks/useSyncStorage'
 import { useNavigation } from '../contexts/NavigationContext'
 import { useAuth } from '../contexts/AuthContext'
 import { upsertUserProgress } from '../services/supabaseDataService'
-import { useGlobalSync } from '../contexts/GlobalSyncContext'
+import { useGlobal } from '../contexts/GlobalContext'
 import { loadVocabulary, getVocabSources } from '../services/dataService'
 import { playAudio, cancelAudio } from '../utils/tts'
 
@@ -70,7 +70,7 @@ function getMockExamples(word) {
 export default function Vocab() {
   const { navigationParams, clearParams } = useNavigation()
   const { user } = useAuth()
-  const { learningPlan, triggerGlobalRefresh } = useGlobalSync()
+  const { learningPlan, triggerGlobalRefresh } = useGlobal()
 
   /* ── persistent state (cloud-synced) ── */
   const [globalWordPool, setGlobalWordPool] = useSyncStorage('globalWordPool', [], 'ignore_word_pool')
@@ -604,7 +604,7 @@ export default function Vocab() {
               vocabMode === 'review' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
             }`}
           >
-            温故知新 ({dueCount})
+            温故知新 ({Math.min(dueCount, learningPlan.targetReview || 30)})
           </button>
         </div>
       </div>
